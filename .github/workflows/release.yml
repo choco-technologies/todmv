@@ -20,9 +20,9 @@ jobs:
 
       - name: Fetch dmod to discover architectures
         run: |
-          # A plain `git clone` here (rather than configuring todmv's
+          # A plain `git clone` here (rather than configuring libtodmv's
           # own CMakeLists.txt via FetchContent, as before) so this step only
-          # ever depends on dmod itself - not on todmv's
+          # ever depends on dmod itself - not on libtodmv's
           # dmod_link_modules() fetches of other modules, which this step has
           # no business needing just to list dmod's supported architectures,
           # and which previously made this discovery job (and therefore the
@@ -68,7 +68,7 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Extracted version: $VERSION"
 
-      - name: Build todmv for ${{ matrix.arch_name }}
+      - name: Build libtodmv for ${{ matrix.arch_name }}
         run: |
           set -e
           ARCH_DIR_NAME=$(echo "${{ matrix.arch_name }}" | sed 's|/|-|')
@@ -101,7 +101,7 @@ jobs:
 
           # A repo may define more than one module (e.g. a core + port split,
           # or several independent modules) - package every subdirectory
-          # found under packages/, not just todmv.
+          # found under packages/, not just libtodmv.
           : > package-names.txt
           for pkg_dir in "$PACKAGES_DIR"/*/; do
             pkg=$(basename "$pkg_dir")
@@ -146,7 +146,7 @@ jobs:
       - name: Generate versions.dmm
         run: |
           set -e
-          echo "# List of available versions for todmv modules" > versions.dmm
+          echo "# List of available versions for libtodmv modules" > versions.dmm
           echo "# Generated automatically by CI" >> versions.dmm
           echo "" >> versions.dmm
 

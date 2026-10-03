@@ -1,9 +1,9 @@
-# todmv
+# libtodmv
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/choco-technologies/todmv/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/todmv/actions/workflows/ci.yml)
+[![CI](https://github.com/choco-technologies/libtodmv/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/libtodmv/actions/workflows/ci.yml)
 
-todmv DMOD library module.
+libtodmv DMOD library module.
 
 ## Description
 
@@ -44,8 +44,8 @@ it through `dmod_loader`. To run it manually instead:
 
 ```bash
 export DMOD_DMF_DIR=$(pwd)/build/dmf
-dmf-get install -d ${DMOD_DMF_DIR}/test_todmv-local.dmd -y
-dmod_loader build/dmf/test_todmv.dmf
+dmf-get install -d ${DMOD_DMF_DIR}/test_libtodmv-local.dmd -y
+dmod_loader build/dmf/test_libtodmv.dmf
 ```
 
 ## Usage
@@ -55,18 +55,18 @@ dmod_loader build/dmf/test_todmv.dmf
 This library module provides functions that can be used by other modules:
 
 ```c
-#include "todmv.h"
+#include "libtodmv.h"
 ```
 
 ## API
 
 | Function | Description |
 |----------|-------------|
-| `todmv_create()` | Create a new `todmv_t` instance. |
-| `todmv_destroy()` | Destroy an instance created by `_create()`. |
-| `todmv_is_valid()` | Check whether a handle is a valid instance. |
+| `libtodmv_create()` | Create a new `libtodmv_t` instance. |
+| `libtodmv_destroy()` | Destroy an instance created by `_create()`. |
+| `libtodmv_is_valid()` | Check whether a handle is a valid instance. |
 
-See [include/todmv.h](include/todmv.h) for the full
+See [include/libtodmv.h](include/libtodmv.h) for the full
 declarations and [docs/api-reference.md](docs/api-reference.md) for the
 complete reference.
 
@@ -76,22 +76,22 @@ See the `docs/` directory:
 
 - **[api-reference.md](docs/api-reference.md)** - Complete API documentation
 
-View documentation using `dmf-man todmv`.
+View documentation using `dmf-man libtodmv`.
 ## Project Structure
 
 ```
-todmv/
+libtodmv/
 ├── docs/              # Documentation (markdown format)
 ├── include/           # Public headers
-│   └── todmv.h
+│   └── libtodmv.h
 ├── src/
-│   └── todmv.c
+│   └── libtodmv.c
 ├── tests/
 │   ├── CMakeLists.txt
-│   └── todmv_test.c
+│   └── libtodmv_test.c
 ├── CMakeLists.txt
 ├── Makefile
-├── todmv.dmr
+├── libtodmv.dmr
 └── manifest.dmm
 ```
 

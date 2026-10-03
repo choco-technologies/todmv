@@ -26,8 +26,8 @@ set(DMOD_BUILD_TEMPLATES OFF CACHE BOOL "Build templates")
 
 FetchContent_MakeAvailable(dmod)
 
-project(todmv VERSION ${DMOD_MODULE_VERSION}
-    DESCRIPTION "todmv DMOD library module"
+project(libtodmv VERSION ${DMOD_MODULE_VERSION}
+    DESCRIPTION "libtodmv DMOD library module"
     LANGUAGES C CXX)
 
 set(DMOD_DIR ${dmod_SOURCE_DIR} CACHE PATH "DMOD source directory")
@@ -36,7 +36,7 @@ include(${DMOD_DIR}/paths.cmake)
 dmod_setup_external_module()
 
 # Name of the module
-set(DMOD_MODULE_NAME        todmv)
+set(DMOD_MODULE_NAME        libtodmv)
 
 # Author (should be string)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
@@ -45,7 +45,7 @@ set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
 set(DMOD_STACK_SIZE         1024)
 
 # Path to the .dmr file - enables release package creation in build/packages/
-set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/todmv.dmr)
+set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/libtodmv.dmr)
 
 # List of MAL interfaces implemented by this module (leave empty if none)
 set(DMOD_MAL_IMPLS          )
@@ -61,7 +61,7 @@ set(DMOD_DIF_IMPLS          )
 #
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
-    src/todmv.c
+    src/libtodmv.c
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE

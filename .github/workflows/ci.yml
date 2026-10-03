@@ -19,7 +19,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build todmv
+      - name: Build libtodmv
         run: |
           mkdir -p build
           cd build
@@ -30,13 +30,13 @@ jobs:
         run: |
           echo "Checking for module files..."
           ls -lh build/dmf/
-          test -f build/dmf/todmv.dmf
-          test -f build/dmf/todmv_version.txt
-          test -f build/dmf/test_todmv.dmf
+          test -f build/dmf/libtodmv.dmf
+          test -f build/dmf/libtodmv_version.txt
+          test -f build/dmf/test_libtodmv.dmf
           echo "Module files present"
 
       - name: Run tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
-          dmf-get install -d ${DMOD_DMF_DIR}/test_todmv-local.dmd -y
-          dmod_loader build/dmf/test_todmv.dmf
+          dmf-get install -d ${DMOD_DMF_DIR}/test_libtodmv-local.dmd -y
+          dmod_loader build/dmf/test_libtodmv.dmf

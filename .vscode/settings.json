@@ -1,6 +1,6 @@
 {
     "files.associations": {
-        "todmv.h": "c"
+        "libtodmv.h": "c"
     },
     "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
     "C_Cpp.intelliSenseEngine": "default",

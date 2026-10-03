@@ -1,6 +1,6 @@
-# todmv Documentation
+# libtodmv Documentation
 
-Welcome to the todmv module documentation.
+Welcome to the libtodmv module documentation.
 
 ## Contents
 
@@ -9,12 +9,12 @@ Welcome to the todmv module documentation.
 ## Quick Reference
 
 ```c
-#include "todmv.h"
+#include "libtodmv.h"
 ```
 
 View documentation using `dmf-man`:
 
 ```bash
-dmf-man todmv          # Main documentation
-dmf-man todmv api      # API reference
+dmf-man libtodmv          # Main documentation
+dmf-man libtodmv api      # API reference
 ```
