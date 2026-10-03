@@ -63,6 +63,7 @@ dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     src/libtodmv.c
     src/plugin.c
+    src/command.c
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE

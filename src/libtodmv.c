@@ -1,6 +1,7 @@
 #define DMOD_ENABLE_REGISTRATION ON
 #include "dmod.h"
 #include "libtodmv.h"
+#include "plugin.h"
 #include <errno.h>
 
 #define MAGIC_NUMBER        0x43129999
@@ -70,7 +71,11 @@ dmod_libtodmv_api_declaration(1.0, int, _assemble_line, (libtodmv_t context, con
         return -EINVAL;
     }
 
-    
+    libtodmv_plugin_t* plugin = find_plugin(line, in_fname, line_number, out_fp);
+    if(plugin == NULL)
+    {
+        
+    }
 
     return 0;
 }

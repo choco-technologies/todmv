@@ -59,6 +59,17 @@ typedef struct
     libtodmv_opcode_t   opcode;
 } libtodmv_cmd_t;
 
+typedef enum 
+{
+    libtodmv_itype_cmd, 
+    libtodmv_itype_set
+} libtodmv_itype_t;
+
+typedef struct 
+{
+    
+}
+
 /**
  * @brief stores information about the plugin
  */
