@@ -25,6 +25,11 @@
 typedef struct libtodmv* libtodmv_t;
 
 /**
+ * @brief context for the plugins
+ */
+typedef struct libtodmv_plugin_ctx* libtodmv_plugin_ctx_t;
+
+/**
  * @brief Assemble function
  * 
  * @param context       context of the library
@@ -41,13 +46,28 @@ typedef int (*libtodmv_assf_t)( libtodmv_t context, const char* line, void* fp )
 typedef uint8_t libtodmv_opcode_t;
 
 /**
- * @brief stores definition of the command
+ * @brief type for storing commands
+ */
+typedef char libtodmv_cmd_str_t[4];
+
+/**
+ * @brief stores the command definition
  */
 typedef struct 
 {
-    const char*         command;        //!< Command to parse
-    libtodmv_opcode_t   opcode;         //!< Opcode related with this command
-    libtodmv_assf_t     assembly_f;     //!< Assembly function 
-} libtodmv_instruction_t;
+    libtodmv_cmd_str_t  str;
+    libtodmv_opcode_t   opcode;
+} libtodmv_cmd_t;
+
+/**
+ * @brief stores information about the plugin
+ */
+typedef struct 
+{
+    libtodmv_cmd_t*         supported_cmds;
+    size_t                  supported_size;
+    Dmod_Context_t          plugin;         
+    libtodmv_plugin_ctx_t   context;
+} libtodmv_plugin_t;
 
 #endif // LIBTODMV_TYPES_H

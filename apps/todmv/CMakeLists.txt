@@ -32,9 +32,9 @@ target_link_libraries(${DMOD_MODULE_NAME}
     )
 
 # To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmlist
+)
 
 enable_testing()
 add_subdirectory(tests)

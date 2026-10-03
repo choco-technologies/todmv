@@ -7,6 +7,7 @@
 #include "dmod_types.h"
 #include "libtodmv_defs.h"
 #include "libtodmv_types.h"
+#include "libtodmv_plugin.h"
 
 /**
  * Create a new libtodmv instance.

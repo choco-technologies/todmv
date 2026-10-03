@@ -46,7 +46,7 @@ set depends on.
 ### Boxes
 
 The screen is built from **boxes** - rectangles that correspond to HTML
-elements. `BOX` opens a box, `END` closes it; boxes nest.
+elements. `BBOX` opens a box, `EBOX` closes it; boxes nest.
 
 Inside a box:
 
@@ -62,22 +62,22 @@ the program first.
 
 Drawing instructions carry all their parameters - position, size, color,
 font. There is no "current color" or "current font". The only state is the
-one `BOX` sets up (origin, clip, box variables). Because of that, **any box
-can be redrawn on its own**: `dmgui` re-runs the code between its `BOX` and
-`END` with the box's origin and clip, and nothing else is needed.
+one `BBOX` sets up (origin, clip, box variables). Because of that, **any box
+can be redrawn on its own**: `dmgui` re-runs the code between its `BBOX` and
+`EBOX` with the box's origin and clip, and nothing else is needed.
 
 ### Draw pass
 
 When a view is shown, `dmgui` runs the code from the entry label (`.entry`)
-until its top-level `RET` and draws the whole screen. After that, only
+until its top-level `RETN` and draws the whole screen. After that, only
 invalidated boxes are drawn again:
 
 - a box is invalidated when a variable it **read** during its last draw
   changes (this includes `$box.pressed` - pressing a button redraws it),
-- or explicitly with `REDRAW`.
+- or explicitly with `RDRW`.
 
 Writes to variables during a draw pass never invalidate anything: a draw must
-depend only on the state, temporary results (e.g. `FORMAT` into a buffer) are
+depend only on the state, temporary results (e.g. `FRMT` into a buffer) are
 allowed.
 
 A box that is jumped over is neither drawn nor hit-tested - this is how
@@ -85,14 +85,14 @@ elements are shown and hidden. A box whose position or size comes from a
 variable invalidates both its old and its new area.
 
 **Opaque boxes.** Redrawing a box that does not paint all of its area itself
-needs what lies beneath it. `BOX ... OPAQUE` promises that the box covers its
+needs what lies beneath it. `BBOX ... OPAQUE` promises that the box covers its
 whole area (typically `FILL` or a `RECT` over it). For a box that is not
 opaque, `dmgui` redraws its parents up to the nearest opaque one, clipped to
 the invalidated area. The view's root is always treated as opaque.
 
 ### Scrolling
 
-`SCROLL cw, ch [, flags]` right after `BOX` makes the box a viewport onto
+`SCRL cw, ch [, flags]` right after `BBOX` makes the box a viewport onto
 content of `cw` x `ch` pixels. The box's children are drawn shifted by the
 scroll offset, which `dmgui` keeps per box:
 
@@ -101,7 +101,7 @@ scroll offset, which `dmgui` keeps per box:
   moves more than the scroll threshold (`.scrollslop`, default 8 px), the
   scroll box takes the contact over and the child gets `RELEASE` without
   `CLICK`. `WHEEL` over the box scrolls it as well.
-- `SCROLLTO @id, x, y` sets the offset from a handler (clamped to the
+- `SCTO @id, x, y` sets the offset from a handler (clamped to the
   content), `$box.sx` / `$box.sy` read it.
 - **Why an instruction**: `dmgui` knows the box is a viewport, so scrolling
   needs no full redraw - it moves the pixels already on the screen and draws
@@ -115,7 +115,7 @@ the scroll box copies `$box.sy` into a variable that other boxes read.
 
 ### Input
 
-A box becomes interactive with `ON event, label` inside it. The handler runs
+A box becomes interactive with `WHEN event, label` inside it. The handler runs
 **in the context of that box**: `$box.*` refers to it and `$ev.x` / `$ev.y`
 are relative to its top-left corner.
 
@@ -153,8 +153,8 @@ have their own IDs, see below).
 For devices without a pointer - a few buttons, a rotary encoder, a keyboard
 - one box at a time has the **focus**, and keys move it and activate it.
 
-- `FOCUS order` right after `BOX` makes the box focusable. Boxes are visited
-  in increasing `order`, equal orders in drawing order (`FOCUS 0` everywhere
+- `FOCS order` right after `BBOX` makes the box focusable. Boxes are visited
+  in increasing `order`, equal orders in drawing order (`FOCS 0` everywhere
   = drawing order, like `tabindex="0"`).
 - `.navkeys` maps device buttons to navigation: `NEXT`/`PREV` move through
   the focus order, `UP`/`DOWN`/`LEFT`/`RIGHT` move to the nearest focusable
@@ -166,7 +166,7 @@ For devices without a pointer - a few buttons, a rotary encoder, a keyboard
   with keys unchanged.
 - `$box.focused` is 1 for the focused box (redrawn when it changes, like
   `$box.pressed` - this is CSS `:focus`); `FOCUS` / `BLUR` events go to the
-  box that gains / loses the focus; `SETFOCUS @id` moves it from a handler.
+  box that gains / loses the focus; `SFOC @id` moves it from a handler.
 - A key that is not a navigation key goes to the focused box as `KEY`
   (`$ev.key`), bubbling to its parents; `.key` handlers of the view get the
   keys nobody handled.
@@ -186,7 +186,7 @@ For devices without a pointer - a few buttons, a rotary encoder, a keyboard
 | `ROTATE` | Two contacts of a `MULTI` box turn around each other | `$ev.angle`, `$ev.cx`, `$ev.cy` |
 | `ENTER` / `LEAVE` | A mouse pointer enters / leaves the box (no button down) | `$ev.x`, `$ev.y` |
 | `WHEEL` | Wheel steps over the box | `$ev.wheel` |
-| `SCROLLED` | The box's scroll offset changed (drag, wheel, `SCROLLTO`, focus) | `$box.sx`, `$box.sy` |
+| `SCROLLED` | The box's scroll offset changed (drag, wheel, `SCTO`, focus) | `$box.sx`, `$box.sy` |
 | `FOCUS` / `BLUR` | The box gains / loses the focus | - |
 | `KEY` | A non-navigation key goes down while the box (or a child) has the focus | `$ev.key` |
 
@@ -194,7 +194,7 @@ For devices without a pointer - a few buttons, a rotary encoder, a keyboard
 mouse and focus activation; `ENTER`, `LEAVE` and `WHEEL` only come from
 devices that report motion or a wheel (`DMDRVI_INPUT_CAP_MOTION` / `_WHEEL`).
 
-**Handlers** run until `RET`. They change variables and perform actions;
+**Handlers** run until `RETN`. They change variables and perform actions;
 drawing instructions are not allowed in a handler (the assembler rejects
 them when it can prove it, the runtime ignores them). When the handler
 returns, `dmgui` redraws what became invalid. Handlers that belong to the
@@ -213,7 +213,7 @@ never arriving:
 | 1 | One contact (further contacts are ignored until it is lifted), `PRESS` ... `CLICK`, `ENTER`/`LEAVE`, `WHEEL`, scrolling with one contact |
 | 2 | Independent contacts, `MULTI`, `$box.contacts` |
 | 3 | `PINCH`, `ROTATE`, two-finger scroll |
-| F | Focus: `FOCUS`, `.navkeys`, activation, `FOCUS`/`BLUR`/`KEY` events, `SETFOCUS` |
+| F | Focus: `FOCS`, `.navkeys`, activation, `FOCUS`/`BLUR`/`KEY` events, `SFOC` |
 
 The first `dmgui` implements level 1; F and 2-3 come later without changing
 the format.
@@ -289,7 +289,7 @@ Read-only, always available:
 |----------|---------|
 | `$box.w`, `$box.h` | Size of the current box |
 | `$box.pressed` | 1 while the current box holds a captured contact, else 0 |
-| `$box.sx`, `$box.sy` | Scroll offset of the current box (0 without `SCROLL`) |
+| `$box.sx`, `$box.sy` | Scroll offset of the current box (0 without `SCRL`) |
 | `$box.contacts` | Number of contacts the current box holds |
 | `$box.focused` | 1 while the current box has the focus, else 0 |
 | `$ev.contact` | Contact of the event: the input device's contact ID (0...), `POINTER_CONTACT` for the mouse, `FOCUS_CONTACT` for focus activation |
@@ -317,20 +317,20 @@ value, 32-bit 0xAARRGGBB; **str** - string literal or string variable;
 
 | Opcode | Mnemonic | Operands | Description |
 |--------|----------|----------|-------------|
-| 0x00 | `NOP` | - | Nothing |
-| 0x01 | `BOX` | `@id, x, y, w, h [, flags]` | Open a box at x/y of the current one. Flags: `OPAQUE`, `MULTI` (takes several contacts, receives gestures) |
-| 0x02 | `END` | - | Close the innermost box |
-| 0x03 | `JMP` | `label` | Jump |
+| 0x00 | `NOOP` | - | Nothing |
+| 0x01 | `BBOX` | `@id, x, y, w, h [, flags]` | Open a box at x/y of the current one. Flags: `OPAQUE`, `MULTI` (takes several contacts, receives gestures) |
+| 0x02 | `EBOX` | - | Close the innermost box |
+| 0x03 | `JUMP` | `label` | Jump |
 | 0x04 | `CALL` | `label` | Call a subroutine (stack of 8) |
-| 0x05 | `RET` | - | Return; at the top level it ends the pass or the handler |
-| 0x06 | `JEQ` | `a, b, label` | Jump if a == b (a, b: n) |
-| 0x07 | `JNE` | `a, b, label` | Jump if a != b |
-| 0x08 | `JLT` | `a, b, label` | Jump if a < b |
-| 0x09 | `JLE` | `a, b, label` | Jump if a <= b |
-| 0x0A | `JGT` | `a, b, label` | Jump if a > b |
-| 0x0B | `JGE` | `a, b, label` | Jump if a >= b |
-| 0x0C | `SCROLL` | `cw, ch [, flags]` | Right after `BOX`: the box shows a scrollable area of cw x ch. Flags: `HORIZONTAL`, `VERTICAL` (default: both where the content is larger), `BAR` (draw a scroll indicator) |
-| 0x0D | `FOCUS` | `order` | Right after `BOX` (and `SCROLL`): the box is focusable, visited in increasing `order` |
+| 0x05 | `RETN` | - | Return; at the top level it ends the pass or the handler |
+| 0x06 | `JMEQ` | `a, b, label` | Jump if a == b (a, b: n) |
+| 0x07 | `JMNE` | `a, b, label` | Jump if a != b |
+| 0x08 | `JMLT` | `a, b, label` | Jump if a < b |
+| 0x09 | `JMLE` | `a, b, label` | Jump if a <= b |
+| 0x0A | `JMGT` | `a, b, label` | Jump if a > b |
+| 0x0B | `JMGE` | `a, b, label` | Jump if a >= b |
+| 0x0C | `SCRL` | `cw, ch [, flags]` | Right after `BBOX`: the box shows a scrollable area of cw x ch. Flags: `HORIZONTAL`, `VERTICAL` (default: both where the content is larger), `BAR` (draw a scroll indicator) |
+| 0x0D | `FOCS` | `order` | Right after `BBOX` (and `SCRL`): the box is focusable, visited in increasing `order` |
 
 A subroutine called inside a box draws in that box, so widgets are reusable:
 `CALL button_bg` draws whatever background the current box is.
@@ -344,14 +344,14 @@ Colors with alpha below 0xFF are blended.
 |--------|----------|----------|-------------|
 | 0x10 | `FILL` | `color` | Fill the whole current box |
 | 0x11 | `RECT` | `x, y, w, h, color` | Filled rectangle |
-| 0x12 | `RRECT` | `x, y, w, h, r, color` | Filled rectangle with corner radius r |
-| 0x13 | `FRAME` | `x, y, w, h, t, color` | Rectangle outline, t pixels thick, drawn inside x/y/w/h |
-| 0x14 | `RFRAME` | `x, y, w, h, r, t, color` | Rounded rectangle outline |
+| 0x12 | `RREC` | `x, y, w, h, r, color` | Filled rectangle with corner radius r |
+| 0x13 | `FRAM` | `x, y, w, h, t, color` | Rectangle outline, t pixels thick, drawn inside x/y/w/h |
+| 0x14 | `RFRM` | `x, y, w, h, r, t, color` | Rounded rectangle outline |
 | 0x15 | `LINE` | `x1, y1, x2, y2, t, color` | Line t pixels thick |
-| 0x16 | `CIRCLE` | `x, y, r, color` | Filled circle centered at x/y |
+| 0x16 | `CIRC` | `x, y, r, color` | Filled circle centered at x/y |
 | 0x17 | `RING` | `x, y, r, t, color` | Circle outline |
 | 0x18 | `TEXT` | `x, y, w, h, str, font, color, align` | Text laid out in the rectangle x/y/w/h |
-| 0x19 | `IMAGE` | `x, y, w, h, str, align` | Image from the file `str` (path, literal or string variable) placed in the rectangle x/y/w/h - see [Images](#images) |
+| 0x19 | `IMAG` | `x, y, w, h, str, align` | Image from the file `str` (path, literal or string variable) placed in the rectangle x/y/w/h - see [Images](#images) |
 
 `TEXT` alignment flags: horizontal `LEFT` (default), `CENTER`, `RIGHT`;
 vertical `TOP` (default), `MIDDLE`, `BOTTOM`; `WRAP` breaks lines at spaces
@@ -364,53 +364,53 @@ variable declared with `.var`; built-in variables are read-only.
 
 | Opcode | Mnemonic | Operands | Description |
 |--------|----------|----------|-------------|
-| 0x40 | `SET` | `$d, n` or `$d, str` | d = n; for a string variable copies the string (truncated to its size) |
-| 0x41 | `ADD` | `$d, n` | d = d + n |
-| 0x42 | `SUB` | `$d, n` | d = d - n |
-| 0x43 | `MUL` | `$d, n` | d = d * n |
-| 0x44 | `DIV` | `$d, n` | d = d / n, rounded toward zero; d = 0 when n = 0 |
-| 0x45 | `MOD` | `$d, n` | d = d % n; d = 0 when n = 0 |
-| 0x46 | `MIN` | `$d, n` | d = min(d, n) |
-| 0x47 | `MAX` | `$d, n` | d = max(d, n) |
-| 0x48 | `CLAMP` | `$d, lo, hi` | d = min(max(d, lo), hi) |
-| 0x49 | `TOGGLE` | `$d` | d = (d == 0) ? 1 : 0 |
-| 0x4A | `FORMAT` | `$d, str, n` | Format n into string variable d: `str` with one `%d`, `%x` or `%%` |
+| 0x40 | `SETV` | `$d, n` or `$d, str` | d = n; for a string variable copies the string (truncated to its size) |
+| 0x41 | `ADDV` | `$d, n` | d = d + n |
+| 0x42 | `SUBV` | `$d, n` | d = d - n |
+| 0x43 | `MULV` | `$d, n` | d = d * n |
+| 0x44 | `DIVV` | `$d, n` | d = d / n, rounded toward zero; d = 0 when n = 0 |
+| 0x45 | `MODV` | `$d, n` | d = d % n; d = 0 when n = 0 |
+| 0x46 | `MINV` | `$d, n` | d = min(d, n) |
+| 0x47 | `MAXV` | `$d, n` | d = max(d, n) |
+| 0x48 | `CLMP` | `$d, lo, hi` | d = min(max(d, lo), hi) |
+| 0x49 | `TOGL` | `$d` | d = (d == 0) ? 1 : 0 |
+| 0x4A | `FRMT` | `$d, str, n` | Format n into string variable d: `str` with one `%d`, `%x` or `%%` |
 
 A variable is "changed" only when its value differs from the previous one -
-`SET $v, 5` on a `$v` that already holds 5 invalidates nothing.
+`SETV $v, 5` on a `$v` that already holds 5 invalidates nothing.
 
 ### Input
 
 | Opcode | Mnemonic | Operands | Description |
 |--------|----------|----------|-------------|
-| 0x60 | `ON` | `event, label` | Make the current box receive `event` and run `label` for it |
+| 0x60 | `WHEN` | `event, label` | Make the current box receive `event` and run `label` for it |
 
-`ON` is valid only inside a box. Several `ON` for different events may follow
+`WHEN` is valid only inside a box. Several `WHEN` for different events may follow
 each other; one box has at most one handler per event.
 
 ### Actions
 
 | Opcode | Mnemonic | Operands | Description |
 |--------|----------|----------|-------------|
-| 0x80 | `REDRAW` | `[@id]` | Invalidate a box (default: the current one) |
+| 0x80 | `RDRW` | `[@id]` | Invalidate a box (default: the current one) |
 | 0x81 | `EXEC` | `str` | Run a dmell command line, e.g. `"ifconfig eth0 up"`, without waiting for it |
-| 0x82 | `SIGNAL` | `str` | Call the dmhaman handler with this name - lets a C module react to the UI |
+| 0x82 | `SGNL` | `str` | Call the dmhaman handler with this name - lets a C module react to the UI |
 | 0x83 | `GOTO` | `str` | Show another view (path of a `.dmv`) after the current handler returns |
-| 0x84 | `SCROLLTO` | `@id, x, y` | Set the scroll offset of a scroll box (clamped to its content) |
-| 0x85 | `RELOAD` | `str` | Load the image file `str` again (it changed on disk) and redraw where it is shown |
-| 0x86 | `SETFOCUS` | `@id` | Move the focus to a focusable box |
+| 0x84 | `SCTO` | `@id, x, y` | Set the scroll offset of a scroll box (clamped to its content) |
+| 0x85 | `RLOD` | `str` | Load the image file `str` again (it changed on disk) and redraw where it is shown |
+| 0x86 | `SFOC` | `@id` | Move the focus to a focusable box |
 
 Opcodes 0xF0-0xFF are reserved for extensions (e.g. `dmjs` script calls).
 
 ## Images
 
-An image is never part of an instruction. `IMAGE` carries only a rectangle
+An image is never part of an instruction. `IMAG` carries only a rectangle
 and the **path** of the file; the path is a string like any other - a literal
 in the string table or a string variable:
 
 ```
-        IMAGE   8, 8, 64, 64, "/flash/icons/wifi.dmvi", CENTER|MIDDLE
-        IMAGE   0, 40, 480, 200, $photo, CENTER|MIDDLE     ; dynamic source
+        IMAG   8, 8, 64, 64, "/flash/icons/wifi.dmvi", CENTER|MIDDLE
+        IMAG   0, 40, 480, 200, $photo, CENTER|MIDDLE     ; dynamic source
 ```
 
 - **The rectangle is fixed in the instruction**, so the layout never depends
@@ -424,7 +424,7 @@ in the string table or a string variable:
   that cannot be loaded or decoded stays empty and is logged.
 - **Dynamic sources**: with a string variable as the source, setting the
   variable to another path loads the new image and redraws - from a
-  handler, or from outside through an `env:` binding. `RELOAD` reads a file
+  handler, or from outside through an `env:` binding. `RLOD` reads a file
   again when its content changed under the same path (e.g. a camera
   snapshot).
 - **Memory**: decoded images are kept (in SDRAM where there is one) per path
@@ -511,48 +511,48 @@ draw:
         FILL    #101820
         TEXT    16, 12, 448, 32, "dmview demo", title, #FFFFFF, LEFT|MIDDLE
 
-        BOX     @counter, 16, 60, 160, 48
-        ON      CLICK, increment
+        BBOX    @counter, 16, 60, 160, 48
+        WHEN    CLICK, increment
         CALL    button_bg
-        FORMAT  $label, "Count: %d", $count
+        FRMT    $label, "Count: %d", $count
         TEXT    0, 0, $box.w, $box.h, $label, body, #FFFFFF, CENTER|MIDDLE
-        END
+        EBOX
 
-        BOX     @slider, 16, 130, 300, 32
-        ON      PRESS, slide
-        ON      DRAG,  slide
-        RRECT   0, 12, $box.w, 8, 4, #303A48
-        SET     $fill, $level           ; temporary: fill = level * width / 100
-        MUL     $fill, $box.w
-        DIV     $fill, 100
-        RRECT   0, 12, $fill, 8, 4, BLUE
-        END
+        BBOX    @slider, 16, 130, 300, 32
+        WHEN    PRESS, slide
+        WHEN    DRAG,  slide
+        RREC    0, 12, $box.w, 8, 4, #303A48
+        SETV    $fill, $level           ; temporary: fill = level * width / 100
+        MULV    $fill, $box.w
+        DIVV    $fill, 100
+        RREC    0, 12, $fill, 8, 4, BLUE
+        EBOX
 
-        BOX     @ip, 16, 190, 448, 32, OPAQUE
+        BBOX    @ip, 16, 190, 448, 32, OPAQUE
         FILL    #101820
         TEXT    0, 0, $box.w, $box.h, $ip, body, #A0A8B0, LEFT|MIDDLE
-        END
-        RET
+        EBOX
+        RETN
 
 ; Background of a button-like box, darker while pressed
 button_bg:
-        JNE     $box.pressed, 0, .down
-        RRECT   0, 0, $box.w, $box.h, 8, BLUE
-        RET
+        JMNE    $box.pressed, 0, .down
+        RREC    0, 0, $box.w, $box.h, 8, BLUE
+        RETN
 .down:
-        RRECT   0, 0, $box.w, $box.h, 8, BLUE_DOWN
-        RET
+        RREC    0, 0, $box.w, $box.h, 8, BLUE_DOWN
+        RETN
 
 increment:
-        ADD     $count, 1
-        RET
+        ADDV    $count, 1
+        RETN
 
 slide:
-        SET     $level, $ev.x
-        MUL     $level, 100
-        DIV     $level, $box.w
-        CLAMP   $level, 0, 100
-        RET
+        SETV    $level, $ev.x
+        MULV    $level, 100
+        DIVV    $level, $box.w
+        CLMP    $level, 0, 100
+        RETN
 ```
 
 What happens at run time:
@@ -574,7 +574,7 @@ Little-endian. Every instruction is a 4-byte header followed by its operands:
 | 0 | opcode | Instruction (tables above) |
 | 1 | size | Total size of the instruction in bytes, a multiple of 4 |
 | 2 | varmask | Bit n set: operand n holds a variable index instead of an immediate |
-| 3 | flags | Instruction flags (`BOX` flags, `TEXT` alignment, ...) |
+| 3 | flags | Instruction flags (`BBOX` flags, `TEXT` alignment, ...) |
 
 - Operands follow in the order of the assembly operands: 16-bit values
   (coordinates, sizes, variable/string/font/image/box indices, labels) take 2
@@ -595,7 +595,7 @@ Little-endian. Every instruction is a 4-byte header followed by its operands:
   the same way as image decoders.
 - **Embedded resources**: should small icons optionally be embedded in the
   `.dmv` (a resource section), so a simple view is one file?
-- **Image scaling** (`object-fit: contain/cover`) in `IMAGE`.
+- **Image scaling** (`object-fit: contain/cover`) in `IMAG`.
 - **Key codes**: `$ev.key` is a button index for now; a keyboard (text
   input) needs key codes and characters - an addition to the dmdrvi input
   state.

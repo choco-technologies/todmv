@@ -12,6 +12,10 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
+dmod_link_modules(${DMOD_MODULE_NAME} 
+    dmlist
+    )
+
 target_link_libraries(${DMOD_MODULE_NAME} libtodmv_if)
 
 # Register the test module with ctest - this replays the same two steps CI
