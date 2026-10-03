@@ -1,0 +1,15 @@
+# Build directories
+build/
+*.dmf
+*.dmfc
+
+# IDE
+# .vscode/tasks.json and .vscode/settings.json are committed (see every real
+# module repo) so the build tasks are shared with the team - don't ignore
+# .vscode/ wholesale.
+.idea/
+
+# Temporary files
+*.tmp
+*.swp
+*~

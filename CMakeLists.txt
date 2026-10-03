@@ -77,4 +77,5 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
 #       other_module@1.0
 #   )
 enable_testing()
+add_subdirectory(apps)
 add_subdirectory(tests)
