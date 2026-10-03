@@ -98,7 +98,7 @@ static void capture_error(void *user, const libtodmv_error_t *e)
             strncpy(c->file, e->file, sizeof(c->file) - 1U);
         c->line = e->line;
         c->column = e->column;
-        strncpy(c->message, e->message, sizeof(c->message) - 1U);
+        memcpy(c->message, e->message, sizeof(c->message));     /* Same size, zero-terminated */
     }
     g_error_count++;
 }
