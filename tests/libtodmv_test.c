@@ -284,7 +284,7 @@ DMOD_TEST_STEP(libtodmv_encodes_gradients)
         "main:\n RRECT 0, 0, 10, 10, 2, sky\n TEXT 0, 0, 8, 8, \"x\", f, glow, CENTER|MIDDLE\n FILL #102030\n RET\n"), 0);
 
     const uint8_t *h = g_out.data;
-    DMOD_TEST_EXPECT_EQ(rd16(h + 6), DMV_VERSION_MINOR);
+    DMOD_TEST_EXPECT_EQ(rd16(h + 6), 2);                     /* Gradients: version 0.2 */
     DMOD_TEST_EXPECT_EQ(rd32(h + 84), 4u);                   /* Gradients */
     DMOD_TEST_EXPECT_EQ(rd32(h + 92), 10u);                  /* Stops */
 
@@ -343,6 +343,33 @@ DMOD_TEST_STEP(libtodmv_encodes_gradients)
     DMOD_TEST_EXPECT_TRUE(first_error(4, 11, "declared twice"));
     assemble(VIEW ".gradient g, LINEAR, #000000, #FFFFFF\nmain:\n RECT 0, 0, g, 8, #000000\n RET\n");
     DMOD_TEST_EXPECT_TRUE(first_error(5, 13, "expected a number"));
+}
+
+DMOD_TEST_STEP(libtodmv_encodes_opacity)
+{
+    static const uint8_t opacity[8] = { DMV_OP_OPACITY, 8, 0, 0,  128, 0,  0, 0 };
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW ".var $a, int, 255\n"
+                                 "main:\n BOX @b, 0, 0, 10, 10\n OPACITY 128\n END\n"
+                                 " BOX @c, 0, 0, 10, 10\n SCROLL 10, 20\n FOCUS 1\n OPACITY $a\n END\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(rd16(g_out.data + 6), 3);           /* OPACITY: version 0.3 */
+    const uint8_t *insn = code();
+    insn += insn[1];                                        /* BOX @b */
+    DMOD_TEST_EXPECT_TRUE(bytes_equal(insn, opacity, sizeof(opacity)));
+    do
+        insn += insn[1];                                    /* To the OPACITY of @c, after SCROLL and FOCUS */
+    while (insn[0] != DMV_OP_OPACITY && insn < code() + code_words() * 4U);
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_OPACITY && insn[2] == 0x01 && insn[-8] == DMV_OP_FOCUS);
+
+    libtodmv_input_t in;
+    in.read = memory_read;
+    in.ctx = &g_out;
+    in.size = g_out.size;
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate(&in, NULL, NULL), 0);
+
+    assemble(VIEW "main:\n BOX @b, 0, 0, 10, 10\n FILL #000000\n OPACITY 10\n END\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(6, 2, "OPACITY must directly follow BOX, SCROLL or FOCUS"));
+    assemble(VIEW "main:\n OPACITY 10\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(4, 2, "OPACITY must directly follow"));
 }
 
 DMOD_TEST_STEP(libtodmv_variables_set_the_varmask)
@@ -790,6 +817,7 @@ DMOD_TEST_STEP(libtodmv_round_trips)
         " BOX @list, 0, 0, 100, 200, OPAQUE|MULTI\n"
         " SCROLL 100, 900, VERTICAL|BAR\n"
         " FOCUS 2\n"
+        " OPACITY $n\n"
         " ON SCROLLED, main\n"
         " IMAGE 0, 0, 64, 64, \"/flash/a.dmvi\", RIGHT|BOTTOM\n"
         " TEXT 0, 0, 10, 10, $s, f, #80FF0000, LEFT\n"

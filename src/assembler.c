@@ -149,6 +149,7 @@ typedef struct
     int                       last_opcode;      /* -1 at the start */
 
     bool                      have_view, have_size, have_longpress, have_scrollslop;
+    bool                      uses_opacity;     /* OPACITY: a version 0.3 view */
     uint16_t                  view_name, width, height, longpress, scrollslop;
     int32_t                   entry;            /* Label index, or NO_INDEX */
 } assembler_t;
@@ -814,6 +815,14 @@ static bool check_structure(assembler_t *a, uint8_t opcode, const token_t *word,
                 error(a, word->column, "FOCUS must directly follow BOX or SCROLL");
                 return false;
             }
+            return true;
+        case DMV_OP_OPACITY:
+            if (a->last_opcode != DMV_OP_BOX && a->last_opcode != DMV_OP_SCROLL && a->last_opcode != DMV_OP_FOCUS)
+            {
+                error(a, word->column, "OPACITY must directly follow BOX, SCROLL or FOCUS");
+                return false;
+            }
+            a->uses_opacity = true;
             return true;
         default:
             return true;
@@ -1627,9 +1636,9 @@ static void finish_output(assembler_t *a)
     memset(header, 0, sizeof(header));
     header[0] = DMV_MAGIC_0; header[1] = DMV_MAGIC_1; header[2] = DMV_MAGIC_2; header[3] = DMV_MAGIC_3;
     put16(header + 4, DMV_VERSION_MAJOR);
-    /* A view without gradients is a version 0.1 view - runtimes that know
-     * only 0.1 run it (they find every table through the header) */
-    put16(header + 6, (a->gradients_count != 0) ? DMV_VERSION_MINOR : 1U);
+    /* The oldest version that has what the view uses: runtimes that know
+     * only that run it (they find every table through the header) */
+    put16(header + 6, a->uses_opacity ? 3U : (a->gradients_count != 0) ? 2U : 1U);
     put16(header + 12, a->width);
     put16(header + 14, a->height);
     put16(header + 16, a->view_name);
