@@ -427,23 +427,35 @@ dmod_libtodmv_api_declaration(1.0, int, _disassemble_file, ( const char* input, 
         return -ENOENT;
 
     void *out = NULL;
-    if (output != NULL && (out = Dmod_FileOpen(output, "wb")) == NULL)
+    char *temp = NULL;
+    if (output != NULL)
     {
-        Dmod_FileClose(file);
-        return -EIO;
+        temp = temp_path(output, &in);
+        out = (temp != NULL) ? Dmod_FileOpen(temp, "wb") : NULL;
+        if (out == NULL)
+        {
+            Dmod_FileClose(file);
+            if (temp != NULL)
+                Dmod_Free(temp);
+            return (temp != NULL) ? -EIO : -ENOMEM;
+        }
     }
     libtodmv_sink_t sink;
     sink.write = (out != NULL) ? file_write : console_write;
     sink.seek = NULL;
     sink.ctx = out;
     int ret = libtodmv_disassemble(&in, &sink);
+    Dmod_FileClose(file);
     if (out != NULL)
     {
+        /* The previous output stays as it was unless this one is complete */
         Dmod_FileClose(out);
-        if (ret != 0)
-            Dmod_FileRemove(output);
+        if (ret == 0)
+            ret = commit_output(temp, output);
+        else
+            (void)Dmod_FileRemove(temp);
+        Dmod_Free(temp);
     }
-    Dmod_FileClose(file);
     return ret;
 }
 

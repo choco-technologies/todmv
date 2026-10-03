@@ -1820,11 +1820,14 @@ dmod_libtodmv_api_declaration(1.0, int, _assemble_file, ( const char* input, con
     void *in = Dmod_FileOpen(input, "r");
     if (in == NULL)
         return -ENOENT;
-    void *out = Dmod_FileOpen(output, "wb");
+    char *temp = temp_path(output, &opts);
+    void *out = (temp != NULL) ? Dmod_FileOpen(temp, "wb") : NULL;
     if (out == NULL)
     {
         Dmod_FileClose(in);
-        return -EIO;
+        if (temp != NULL)
+            Dmod_Free(temp);
+        return (temp != NULL) ? -EIO : -ENOMEM;
     }
 
     libtodmv_source_t source;
@@ -1841,8 +1844,15 @@ dmod_libtodmv_api_declaration(1.0, int, _assemble_file, ( const char* input, con
     int ret = libtodmv_assemble(&source, &sink, &opts, result);
     Dmod_FileClose(out);
     Dmod_FileClose(in);
+
+    /* The previous output stays as it was unless this one is complete */
+    if (ret == 0)
+        ret = commit_output(temp, output);
+    else
+        (void)Dmod_FileRemove(temp);
     if (ret != 0)
-        Dmod_FileRemove(output);
+        result->size = 0;
+    Dmod_Free(temp);
     return ret;
 }
 

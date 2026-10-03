@@ -8,7 +8,7 @@ returns 0 on success or a negative errno value.
 | Function | Description |
 |----------|-------------|
 | `int libtodmv_assemble(const libtodmv_source_t* source, const libtodmv_sink_t* sink, const libtodmv_options_t* options, libtodmv_result_t* result)` | Assemble lines from `source` into a binary view written to `sink` |
-| `int libtodmv_assemble_file(const char* input, const char* output, const libtodmv_options_t* options, libtodmv_result_t* result)` | The same, file to file through the dmod VFS; `output` is removed on failure |
+| `int libtodmv_assemble_file(const char* input, const char* output, const libtodmv_options_t* options, libtodmv_result_t* result)` | The same, file to file through the dmod VFS; `output` is replaced only when the new view is complete |
 
 Results: `-EBADMSG` the source has errors (reported through
 `options->on_error`), `-EIO` the sink failed, `-ENOENT` the input file
@@ -56,6 +56,20 @@ string in 32-byte chunks). Disassembly validates the view first and returns
 `-EBADMSG` for an invalid one. The disassembled text is canonical:
 assembling it always gives the same bytes; assembling the original source
 gives an equivalent view whose strings may be stored in another order.
+
+## Files and concurrency
+
+The `*_file` functions write to a temporary file next to the output
+(`<output>.<pid>-<id>.tmp`, unique for every running conversion) and rename
+it when it is complete; the old output is removed right before, since not
+every file system's rename replaces an existing file. So a reader sees the
+previous output or the new one, never a half-written one (it may find no
+file for that moment), and a failed conversion leaves the previous output
+untouched.
+
+libtodmv keeps no global state - everything of a conversion lives on its
+stack or in memory allocated for that call - so any number of conversions
+may run at the same time, in one process or in several.
 
 ## Streams
 
