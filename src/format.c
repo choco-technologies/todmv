@@ -49,6 +49,7 @@ static const dmv_opcode_info_t g_opcodes[OPCODE_TABLE_SIZE] = {
     OP(DMV_OP_JGE,      "JGE",      FLOW,   3, 0, F_NONE,  false, V32, V32, LABEL),
     OP(DMV_OP_SCROLL,   "SCROLL",   FLOW,   2, 0, F_SCR,   false, V16, V16),
     OP(DMV_OP_FOCUS,    "FOCUS",    FLOW,   1, 0, F_NONE,  false, V16),
+    OP(DMV_OP_OPACITY,  "OPACITY",  FLOW,   1, 0, F_NONE,  false, V16),
 
     OP(DMV_OP_FILL,     "FILL",     DRAW,   1, 0, F_NONE,  false, COLOR),
     OP(DMV_OP_RECT,     "RECT",     DRAW,   5, 0, F_NONE,  false, V16, V16, V16, V16, COLOR),
@@ -506,6 +507,7 @@ static dmv_status_t check_code(validator_t *v)
     uint16_t stack[MAX_BOX_DEPTH];
     uint32_t depth = 0, boxes_seen = 0;
     uint8_t insn[MAX_INSTRUCTION], box[sizeof(dmv_box_t)];
+    int previous = -1;                  /* Opcode of the instruction before */
 
     for (uint32_t pos = 0; pos < code_size; pos += insn[1])
     {
@@ -556,6 +558,12 @@ static dmv_status_t check_code(validator_t *v)
         {
             return fail(v, DMV_ERR_NESTING, at);
         }
+        else if (insn[0] == DMV_OP_OPACITY && previous != DMV_OP_BOX && previous != DMV_OP_SCROLL &&
+                 previous != DMV_OP_FOCUS)
+        {
+            return fail(v, DMV_ERR_NESTING, at);       /* Directly after BOX (SCROLL, FOCUS) */
+        }
+        previous = insn[0];
     }
     if (depth != 0 || boxes_seen != v->h.boxes.count)
         return fail(v, DMV_ERR_NESTING, v->h.boxes.offset);
