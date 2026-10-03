@@ -15,7 +15,7 @@ include $(DMOD_DIR)/paths.mk
 # -----------------------------------------------------------------------------
 
 # The name of the module
-DMOD_MODULE_NAME=todmv
+DMOD_MODULE_NAME=libtodmv
 
 # The version of the module
 DMOD_MODULE_VERSION=0.1
@@ -24,13 +24,13 @@ DMOD_MODULE_VERSION=0.1
 DMOD_AUTHOR_NAME=Patryk Kubiak
 
 # The list of C sources
-DMOD_CSOURCES=src/todmv.c
+DMOD_CSOURCES=src/assembler.c src/disassembler.c src/format.c src/names.c src/parse.c src/buffer.c
 
 # The list of C++ sources
 DMOD_CXXSOURCES=
 
 # The list of include directories
-DMOD_INC_DIRS=include
+DMOD_INC_DIRS=include src
 
 # The list of libraries to link
 DMOD_LIBS=

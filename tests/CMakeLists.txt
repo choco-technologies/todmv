@@ -1,23 +1,28 @@
-set(DMOD_MODULE_NAME        test_todmv)
+set(DMOD_MODULE_NAME        test_libtodmv)
 set(DMOD_MODULE_VERSION     ${PROJECT_VERSION})
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         1024)
+set(DMOD_STACK_SIZE         8192)
 set(DMOD_PRIORITY           0)
 
 dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
-    todmv_test.c
+    libtodmv_test.c
 )
 
+# The tests check the binary layout too, so they see the private format
+# header of the library.
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
-target_link_libraries(${DMOD_MODULE_NAME} todmv_if)
+target_link_libraries(${DMOD_MODULE_NAME}
+    libtodmv_if
+)
 
-# Register the test module with ctest - this replays the same two steps CI
-# runs (see .github/templates/ci.yml.template): install the test module's
-# dependencies with dmf-get, then execute it through dmod_loader. The test's
-# exit code equals its number of failed steps (see dmod_add_test).
+# .include and the *_file functions are tested on real files written here
+target_compile_definitions(${DMOD_MODULE_NAME} PRIVATE
+    LIBTODMV_TEST_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+)
+
 find_program(DMF_GET_EXECUTABLE dmf-get HINTS ${DMOD_TOOLS_BIN_DIR} PATHS ENV PATH)
 find_program(DMOD_LOADER_EXECUTABLE dmod_loader HINTS ${DMOD_TOOLS_BIN_DIR} PATHS ENV PATH)
 

@@ -30,13 +30,30 @@ jobs:
         run: |
           echo "Checking for module files..."
           ls -lh build/dmf/
+          test -f build/dmf/libtodmv.dmf
+          test -f build/dmf/libtodmv_version.txt
+          test -f build/dmf/test_libtodmv.dmf
           test -f build/dmf/todmv.dmf
           test -f build/dmf/todmv_version.txt
-          test -f build/dmf/test_todmv.dmf
           echo "Module files present"
 
-      - name: Run tests with dmod_loader
+      - name: Run libtodmv tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
-          dmf-get install -d ${DMOD_DMF_DIR}/test_todmv-local.dmd -y
-          dmod_loader build/dmf/test_todmv.dmf
+          dmf-get install -d ${DMOD_DMF_DIR}/test_libtodmv-local.dmd -y
+          dmod_loader build/dmf/test_libtodmv.dmf
+
+      - name: Assemble the example with todmv
+        run: |
+          # assemble -> disassemble -> assemble -> disassemble: the same text,
+          # and the canonical text assembles into the same binary again
+          export DMOD_DMF_DIR=$(pwd)/build/dmf
+          dmf-get install -d ${DMOD_DMF_DIR}/todmv-local.dmd -y
+          dmod_loader build/dmf/todmv.dmf --args examples/demo.dmvs -o build/demo.dmv
+          test -s build/demo.dmv
+          dmod_loader build/dmf/todmv.dmf --args -d build/demo.dmv -o build/demo-1.dmvs
+          dmod_loader build/dmf/todmv.dmf --args build/demo-1.dmvs -o build/demo-1.dmv
+          dmod_loader build/dmf/todmv.dmf --args -d build/demo-1.dmv -o build/demo-2.dmvs
+          dmod_loader build/dmf/todmv.dmf --args build/demo-2.dmvs -o build/demo-2.dmv
+          cmp build/demo-1.dmvs build/demo-2.dmvs
+          cmp build/demo-1.dmv build/demo-2.dmv
