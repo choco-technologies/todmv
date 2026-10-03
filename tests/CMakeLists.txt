@@ -14,6 +14,11 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 
+# dmosi: threads for the test of several conversions at once
+dmod_link_modules(${DMOD_MODULE_NAME}
+    dmosi
+)
+
 target_link_libraries(${DMOD_MODULE_NAME}
     libtodmv_if
 )

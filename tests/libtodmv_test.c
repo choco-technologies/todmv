@@ -2,6 +2,7 @@
 #include "dmod_test.h"
 #include "libtodmv.h"
 #include "format.h"
+#include "dmosi.h"
 #include <errno.h>
 #include <string.h>
 
@@ -762,4 +763,199 @@ DMOD_TEST_STEP(libtodmv_rejects_invalid_views)
     DMOD_TEST_EXPECT_EQ(libtodmv_validate(&view, &offset, &reason), -EBADMSG);
     DMOD_TEST_EXPECT_EQ(offset, 80u);
     DMOD_TEST_EXPECT_EQ(strcmp(reason, "unknown opcode"), 0);
+}
+
+/* ---- Outputs are replaced atomically ---- */
+
+/* No temporary file (*.tmp) is left in the test directory. */
+static bool no_temp_files(void)
+{
+    void *dir = Dmod_OpenDir(LIBTODMV_TEST_DIR);
+    bool clean = true;
+    if (dir == NULL)
+        return false;
+    for (const char *name = Dmod_ReadDir(dir); name != NULL; name = Dmod_ReadDir(dir))
+    {
+        size_t len = strlen(name);
+        if (len > 4 && strcmp(name + len - 4, ".tmp") == 0)
+        {
+            Dmod_Printf("    left behind: %s\n", name);
+            clean = false;
+        }
+    }
+    Dmod_CloseDir(dir);
+    return clean;
+}
+
+static uint32_t file_size(const char *path)
+{
+    size_t size = 0;
+    void *f = Dmod_FileOpen(path, "rb");
+    if (f == NULL)
+        return 0;
+    if (!Dmod_FileSizeToSizeT(Dmod_FileSize(f), &size))
+        size = 0;
+    Dmod_FileClose(f);
+    return (uint32_t)size;
+}
+
+DMOD_TEST_STEP(libtodmv_failure_keeps_the_previous_output)
+{
+    libtodmv_options_t options = { 0 };
+
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("keep.dmvs"), VIEW "main:\n FILL #102030\n RET\n"));
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("keep-bad.dmvs"), VIEW "main:\n FILL #102030\n NOPE\n RET\n"));
+    DMOD_TEST_EXPECT_EQ(libtodmv_assemble_file(TEST_FILE("keep.dmvs"), TEST_FILE("keep.dmv"), &options, &g_result), 0);
+    uint32_t size = file_size(TEST_FILE("keep.dmv"));
+    DMOD_TEST_EXPECT_NE(size, 0u);
+
+    /* A failed conversion into the same output leaves it as it was */
+    DMOD_TEST_EXPECT_EQ(libtodmv_assemble_file(TEST_FILE("keep-bad.dmvs"), TEST_FILE("keep.dmv"), &options, &g_result), -EBADMSG);
+    DMOD_TEST_EXPECT_EQ(file_size(TEST_FILE("keep.dmv")), size);
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate_file(TEST_FILE("keep.dmv"), NULL, NULL), 0);
+
+    /* Disassembly too: an invalid view does not destroy an existing text */
+    DMOD_TEST_EXPECT_EQ(libtodmv_disassemble_file(TEST_FILE("keep.dmv"), TEST_FILE("keep-text.dmvs")), 0);
+    uint32_t text_size = file_size(TEST_FILE("keep-text.dmvs"));
+    DMOD_TEST_EXPECT_EQ(libtodmv_disassemble_file(TEST_FILE("keep-bad.dmvs"), TEST_FILE("keep-text.dmvs")), -EBADMSG);
+    DMOD_TEST_EXPECT_EQ(file_size(TEST_FILE("keep-text.dmvs")), text_size);
+
+    /* Replacing works as well */
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("keep.dmvs"), VIEW "main:\n FILL #102030\n FILL #000000\n RET\n"));
+    DMOD_TEST_EXPECT_EQ(libtodmv_assemble_file(TEST_FILE("keep.dmvs"), TEST_FILE("keep.dmv"), &options, &g_result), 0);
+    DMOD_TEST_EXPECT_EQ(file_size(TEST_FILE("keep.dmv")), size + 8u);
+    DMOD_TEST_EXPECT_TRUE(no_temp_files());
+}
+
+/* ---- Several conversions at once ----
+ *
+ * Every worker assembles the documented example in memory (the result must
+ * equal the reference built before the threads start) and one of three
+ * sources - two valid views of different sizes and a broken one - into one
+ * shared file. libtodmv keeps no global state, so the in-memory results are
+ * always exact. Meanwhile a reader validates the shared file all the time:
+ * it may be missing for a moment (the old one is removed right before the
+ * new one gets its name), but whenever it exists it is complete. */
+
+#define WORKERS         4
+#define ROUNDS          16
+#define SHARED_OUTPUT   TEST_FILE("shared.dmv")
+
+typedef struct
+{
+    int         index;
+    int         failures;
+    memory_t    out;
+} worker_t;
+
+static worker_t g_workers[WORKERS];
+static memory_t g_reference;
+static volatile bool g_writing;
+static int g_reads, g_bad_reads;
+
+static void reader_entry(void *arg)
+{
+    (void)arg;
+    while (g_writing)
+    {
+        int ret = libtodmv_validate_file(SHARED_OUTPUT, NULL, NULL);
+        g_reads++;
+        if (ret != 0 && ret != -ENOENT)
+            g_bad_reads++;
+    }
+}
+
+static const char *worker_source(int index)
+{
+    switch (index % 3)
+    {
+        case 0:  return TEST_FILE("shared-a.dmvs");
+        case 1:  return TEST_FILE("shared-b.dmvs");
+        default: return TEST_FILE("shared-bad.dmvs");
+    }
+}
+
+static void worker_entry(void *arg)
+{
+    worker_t *w = (worker_t *)arg;
+
+    for (int round = 0; round < ROUNDS; round++)
+    {
+        text_source_t text;
+        text.text = g_demo;
+        text.size = sizeof(g_demo) - 1U;
+        text.pos = 0;
+        libtodmv_source_t src;
+        src.read_line = text_read_line;
+        src.ctx = &text;
+        src.name = NULL;
+        libtodmv_sink_t sink;
+        sink.write = memory_write;
+        sink.seek = memory_seek;
+        sink.ctx = &w->out;
+        libtodmv_result_t result;
+
+        reset(&w->out);
+        if (libtodmv_assemble(&src, &sink, NULL, &result) != 0 || w->out.size != g_reference.size ||
+            !bytes_equal(w->out.data, g_reference.data, g_reference.size))
+            w->failures++;
+
+        libtodmv_options_t options = { 0 };
+        int expected = ((w->index % 3) == 2) ? -EBADMSG : 0;
+        if (libtodmv_assemble_file(worker_source(w->index), SHARED_OUTPUT, &options, &result) != expected)
+            w->failures++;
+    }
+}
+
+DMOD_TEST_STEP(libtodmv_runs_several_conversions_at_once)
+{
+    libtodmv_options_t options = { 0 };
+    dmosi_thread_t threads[WORKERS];
+
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("shared-a.dmvs"), g_demo));
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("shared-b.dmvs"), VIEW "main:\n FILL #102030\n FILL #405060\n RET\n"));
+    DMOD_TEST_EXPECT_TRUE(write_text_file(TEST_FILE("shared-bad.dmvs"), VIEW "main:\n BROKEN\n"));
+    DMOD_TEST_EXPECT_EQ(libtodmv_assemble_file(TEST_FILE("shared-a.dmvs"), TEST_FILE("shared-a.dmv"), &options, &g_result), 0);
+    DMOD_TEST_EXPECT_EQ(libtodmv_assemble_file(TEST_FILE("shared-b.dmvs"), TEST_FILE("shared-b.dmv"), &options, &g_result), 0);
+    DMOD_TEST_EXPECT_EQ(assemble(g_demo), 0);
+    g_reference = g_out;
+
+    g_writing = true;
+    g_reads = g_bad_reads = 0;
+    dmosi_thread_t reader = dmosi_thread_create(reader_entry, NULL, 0, 16384 + DMOSI_THREAD_STACK_OVERHEAD,
+                                                "todmv-reader", NULL);
+    DMOD_TEST_EXPECT_NOT_NULL(reader);
+    for (int i = 0; i < WORKERS; i++)
+    {
+        memset(&g_workers[i], 0, sizeof(g_workers[i]));
+        g_workers[i].index = i;
+        threads[i] = dmosi_thread_create(worker_entry, &g_workers[i], 0, 16384 + DMOSI_THREAD_STACK_OVERHEAD,
+                                         "todmv-worker", NULL);
+        DMOD_TEST_EXPECT_NOT_NULL(threads[i]);
+    }
+    for (int i = 0; i < WORKERS; i++)
+    {
+        if (threads[i] != NULL)
+        {
+            dmosi_thread_join(threads[i]);
+            dmosi_thread_destroy(threads[i]);
+        }
+        DMOD_TEST_EXPECT_EQ(g_workers[i].failures, 0);
+    }
+    g_writing = false;
+    if (reader != NULL)
+    {
+        dmosi_thread_join(reader);
+        dmosi_thread_destroy(reader);
+    }
+    DMOD_TEST_EXPECT_NE(g_reads, 0);
+    DMOD_TEST_EXPECT_EQ(g_bad_reads, 0);
+    if (g_bad_reads != 0)
+        Dmod_Printf("    %d of %d reads saw an incomplete view\n", g_bad_reads, g_reads);
+
+    /* The shared output is one of the two valid views, complete */
+    uint32_t size = file_size(SHARED_OUTPUT);
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate_file(SHARED_OUTPUT, NULL, NULL), 0);
+    DMOD_TEST_EXPECT_TRUE(size == file_size(TEST_FILE("shared-a.dmv")) || size == file_size(TEST_FILE("shared-b.dmv")));
+    DMOD_TEST_EXPECT_TRUE(no_temp_files());
 }

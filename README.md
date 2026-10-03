@@ -58,8 +58,14 @@ todmv -d [-o OUTPUT] VIEW.dmv     disassemble (default output: the console)
 ```
 
 Errors are printed as `file:line:column: error: message` as they are found
-(assembling stops after 16); the exit code is 1 when there are any, and no
-output file is left behind. `.include` paths are relative to the directory of
+(assembling stops after 16); the exit code is 1 when there are any.
+
+The output is written to a temporary file next to it
+(`<output>.<pid>-<id>.tmp`) and gets its name only when it is complete. A
+reader - e.g. dmgui reloading a view - sees either the previous file or the
+new one, never a half-written one; a failed conversion leaves the previous
+file untouched. Several conversions may run at once, also into the same
+output: the last complete one wins. `.include` paths are relative to the directory of
 the assembled file.
 
 On a PC through `dmod_loader`:

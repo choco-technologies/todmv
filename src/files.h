@@ -78,4 +78,40 @@ static inline void *file_open_input(const char *path, libtodmv_input_t *input)
     return file;
 }
 
+/* ---- Output files ----
+ *
+ * An output is written to a temporary file next to it and renamed when it
+ * is complete, so a reader (e.g. dmgui reloading a view) sees either the
+ * previous file or the new one - never a half-written one - and a failed
+ * conversion leaves the previous file untouched. The temporary name is
+ * unique for every running conversion: the pid tells processes apart, the
+ * address of a local variable of the call tells calls of one process apart
+ * (each thread has its own stack) - no global state is needed. */
+
+/* "<output>.<pid>-<id>.tmp", allocated; NULL when out of memory. */
+static inline char *temp_path(const char *output, const void *unique)
+{
+    size_t size = strlen(output) + 32U;
+    char *path = Dmod_Malloc(size);
+    if (path != NULL)
+        Dmod_SnPrintf(path, size, "%s.%x-%x.tmp", output, (unsigned)Dmod_GetCurrentPid(),
+                      (unsigned)(uintptr_t)unique);
+    return path;
+}
+
+/* Give the finished temporary file the output's name. The old output is
+ * removed first: not every file system's rename replaces an existing file
+ * (dmramfs would keep both under one name). */
+static inline int commit_output(const char *temp, const char *output)
+{
+    if (Dmod_FileAvailable(output))
+        (void)Dmod_FileRemove(output);
+    if (Dmod_Rename(temp, output) != 0)
+    {
+        (void)Dmod_FileRemove(temp);
+        return -EIO;
+    }
+    return 0;
+}
+
 #endif /* LIBTODMV_FILES_H */
