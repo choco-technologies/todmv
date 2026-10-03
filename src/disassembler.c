@@ -20,7 +20,7 @@ typedef struct
     const libtodmv_input_t *in;
     writer_t                out;
     int                     status;         /* 0, or -EIO / -ENOMEM */
-    dmv_section_t           code, strings, vars, fonts, boxes, items, symbols;
+    dmv_section_t           code, strings, vars, fonts, boxes, items, symbols, gradients, stops;
     uint8_t                *symbol_table;   /* symbols.count records */
     uint16_t               *generated;      /* Label offsets without a symbol */
     uint32_t                generated_count;
@@ -185,7 +185,10 @@ static void print_operand(disassembler_t *d, const uint8_t *insn, const dmv_opco
                 writer_printf(&d->out, "%d", (int)(int32_t)value);
             break;
         case DMV_OPERAND_COLOR:
-            writer_printf(&d->out, "#%08X", (unsigned)value);
+            if (insn[3] & DMV_PAINT_GRADIENT)
+                print_string(d, rd16_at(d, d->gradients.offset + value * (uint32_t)sizeof(dmv_gradient_t)), false);
+            else
+                writer_printf(&d->out, "#%08X", (unsigned)value);
             break;
         case DMV_OPERAND_STR:
             print_literal(d, value);
@@ -229,10 +232,11 @@ static void print_instruction(disassembler_t *d, const uint8_t *insn)
         first = false;
         print_operand(d, insn, info, &layout, i);
     }
-    if (info->flags_kind == DMV_FLAGS_ALIGN || (info->flags_kind != DMV_FLAGS_NONE && insn[3] != 0))
+    uint8_t flags = insn[3] & (uint8_t)~DMV_PAINT_GRADIENT;     /* The paint flag is the operand's */
+    if (info->flags_kind == DMV_FLAGS_ALIGN || (info->flags_kind != DMV_FLAGS_NONE && flags != 0))
     {
         writer_printf(&d->out, first ? " " : ", ");
-        flags_print(&d->out, info->flags_kind, insn[3]);
+        flags_print(&d->out, info->flags_kind, flags);
     }
     writer_put8(&d->out, '\n');
 }
@@ -268,6 +272,29 @@ static void print_directives(disassembler_t *d, const uint8_t *h)
         print_string(d, get16(f), false);
         writer_printf(&d->out, ", ");
         print_literal(d, get16(f + 2));
+        writer_put8(&d->out, '\n');
+    }
+
+    for (uint32_t i = 0; i < d->gradients.count; i++)
+    {
+        uint8_t g[sizeof(dmv_gradient_t)];
+        rd(d, d->gradients.offset + i * (uint32_t)sizeof(dmv_gradient_t), g, sizeof(g));
+        writer_printf(&d->out, ".gradient ");
+        print_string(d, get16(g), false);
+        if (g[2] == DMV_GRADIENT_LINEAR)
+            writer_printf(&d->out, ", LINEAR, %d", (int)(int16_t)get16(g + 6));
+        else
+            writer_printf(&d->out, ", RADIAL, %d, %d, %d, %d", (int)(int16_t)get16(g + 6), (int)(int16_t)get16(g + 8),
+                          (int)(int16_t)get16(g + 10), (int)(int16_t)get16(g + 12));
+        for (uint32_t k = 0; k < g[3]; k++)
+        {
+            uint8_t st[sizeof(dmv_stop_t)];
+            rd(d, d->stops.offset + (get16(g + 4) + k) * (uint32_t)sizeof(dmv_stop_t), st, sizeof(st));
+            unsigned position = get16(st + 4);
+            writer_printf(&d->out, ", #%08X %u", (unsigned)get32(st), position / 10U);
+            if (position % 10U != 0)
+                writer_printf(&d->out, ".%u", position % 10U);
+        }
         writer_put8(&d->out, '\n');
     }
 
@@ -327,7 +354,14 @@ dmod_libtodmv_api_declaration(1.0, int, _disassemble, ( const libtodmv_input_t* 
     memset(&d, 0, sizeof(d));
     d.in = input;
     writer_init(&d.out, sink);
-    rd(&d, 0, header, sizeof(header));
+    memset(header, 0, sizeof(header));
+    rd(&d, 0, header, DMV_HEADER_SIZE_0_1);
+    if (get16(header + 6) >= 2)
+    {
+        rd(&d, DMV_HEADER_SIZE_0_1, header + DMV_HEADER_SIZE_0_1, DMV_HEADER_SIZE - DMV_HEADER_SIZE_0_1);
+        read_section(header + 80, &d.gradients);
+        read_section(header + 88, &d.stops);
+    }
     read_section(header + 24, &d.code);
     read_section(header + 32, &d.strings);
     read_section(header + 40, &d.vars);
