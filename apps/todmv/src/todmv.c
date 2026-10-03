@@ -1,24 +1,5 @@
 #include "dmod.h"
-
-/**
- * @brief Pre-initialization function for the module.
- * 
- * @note This function is optional. You can remove it if you don't need it.
- * 
- * This function is called when the module enabling is in progress.
- * 
- * You can use this function to load the required dependencies, such as 
- * other modules. Please be aware that the module is not fully initialized, 
- * so not all the API functions are available - you can check if the API
- * is connected by calling the Dmod_IsFunctionConnected() function.
- */
-void dmod_preinit(void)
-{
-    if(Dmod_IsFunctionConnected( Dmod_Printf ))
-    {
-        Dmod_Printf("API is connected!\n");
-    }
-}
+#include "libtodmv.h"
 
 /**
  * @brief Main function of the application
@@ -30,6 +11,13 @@ void dmod_preinit(void)
  */
 int main(int argc, char *argv[])
 {
-    Dmod_Printf("Hello, World!\n");
+    if(argc < 3)
+    {
+        DMOD_LOG_ERROR("Usage: todmv in_fname, out_fname\n");
+        return -1;
+    }
+
+    
+
     return 0;
 }

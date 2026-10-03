@@ -6,27 +6,7 @@
 #include <stddef.h>
 #include "dmod_types.h"
 #include "libtodmv_defs.h"
-
-/**
- * Public API for the libtodmv module.
- *
- * Functions are declared with the dmod_libtodmv_api(...) macro - dmod's
- * standard pattern for functions callable from other modules (or from this
- * module's own tests/), resolved dynamically by the loader rather than
- * through normal static linkage. See dm_sw_ring/include/dm_sw_ring.h for a
- * fully worked real-world example of the same shape.
- *
- * Definitions in src/libtodmv.c use the matching
- * dmod_libtodmv_api_declaration(...) macro - a plain C function
- * definition here will NOT satisfy these declarations at link time.
- *
- * This is an example interface using the usual "opaque handle" pattern -
- * replace the handle, functions, and struct definition in
- * src/libtodmv.c with your module's real API.
- */
-
-/* Opaque handle - the real struct is defined in src/libtodmv.c */
-typedef struct libtodmv* libtodmv_t;
+#include "libtodmv_types.h"
 
 /**
  * Create a new libtodmv instance.
@@ -39,13 +19,41 @@ dmod_libtodmv_api(1.0, libtodmv_t, _create, ( void ));
  * Destroy an instance created by libtodmv_create(). Safe to call with
  * NULL.
  */
-dmod_libtodmv_api(1.0, void, _destroy, ( libtodmv_t handle ));
+dmod_libtodmv_api(1.0, void, _destroy, ( libtodmv_t context ));
 
 /**
  * Example accessor - replace with your module's real API.
  *
  * @return true if handle is a valid, non-NULL instance.
  */
-dmod_libtodmv_api(1.0, bool, _is_valid, ( libtodmv_t handle ));
+dmod_libtodmv_api(1.0, bool, _is_valid, ( libtodmv_t context ));
+
+/**
+ * @brief assebmles the next line of the script
+ * 
+ * The function is responsible for parsing of the one line of the `*.dmvs` binary. 
+ * 
+ * @param context           Context of the library
+ * @param line              Line to assemble
+ * @param in_fname          Input file name (for error messages)
+ * @param line_number       Line number (required for error messages)
+ * @param out_fp            Output file pointer 
+ * 
+ * @return 0 on success, -errno on error 
+ */
+dmod_libtodmv_api(1.0, int, _assemble_line, (libtodmv_t context, const char* line, const char* in_fname, int line_number, void* out_fp ));
+
+/**
+ * @brief assembles the file 
+ * 
+ * The function converts the given input file into the `*.dmv` binary.
+ * 
+ * @param context           Context of the library
+ * @param in_fname          Input file name
+ * @param out_fname         Output file name
+ * 
+ * @return 0 on success, -errno on error
+ */
+dmod_libtodmv_api(1.0, int, _assemble_file, (libtodmv_t context, const char* in_fname, const char* out_fname));
 
 #endif // LIBTODMV_H
