@@ -232,8 +232,9 @@ DMOD_TEST_STEP(libtodmv_minimal_view)
     const uint8_t *h = g_out.data;
     DMOD_TEST_EXPECT_TRUE(h[0] == 'D' && h[1] == 'M' && h[2] == 'V' && h[3] == 0);
     DMOD_TEST_EXPECT_EQ(rd16(h + 4), DMV_VERSION_MAJOR);
-    DMOD_TEST_EXPECT_EQ(rd16(h + 6), DMV_VERSION_MINOR);
+    DMOD_TEST_EXPECT_EQ(rd16(h + 6), 1);                     /* No gradients: a version 0.1 view */
     DMOD_TEST_EXPECT_EQ(rd32(h + 8), g_out.size);
+    DMOD_TEST_EXPECT_EQ(rd32(h + 24), DMV_HEADER_SIZE);
     DMOD_TEST_EXPECT_EQ(rd16(h + 12), 480);
     DMOD_TEST_EXPECT_EQ(rd16(h + 14), 272);
     DMOD_TEST_EXPECT_EQ(strcmp(string(rd16(h + 16)), "tiny"), 0);
@@ -269,6 +270,79 @@ DMOD_TEST_STEP(libtodmv_encodes_operands)
     DMOD_TEST_EXPECT_TRUE(bytes_equal(code(), rect, sizeof(rect)));
     DMOD_TEST_EXPECT_TRUE(bytes_equal(code() + 16, fill, sizeof(fill)));
     DMOD_TEST_EXPECT_EQ(rd32(code() + 20), 0xFF3D85F5u);      /* #RRGGBB is opaque */
+}
+
+DMOD_TEST_STEP(libtodmv_encodes_gradients)
+{
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW
+        ".define TOP, #3D85F5\n"
+        ".gradient sky, LINEAR, 90, TOP 0, #80000000 100%\n"
+        ".gradient down, LINEAR, #FF0000, #00FF00, #0000FF, #FFFFFF\n"
+        ".gradient glow, RADIAL, 25, 75, 50, 100, #FFFFFF, #000000 33.3\n"
+        ".gradient dot, RADIAL, #FFFFFF, #000000\n"
+        ".font f, \"sans-16\"\n"
+        "main:\n RRECT 0, 0, 10, 10, 2, sky\n TEXT 0, 0, 8, 8, \"x\", f, glow, CENTER|MIDDLE\n FILL #102030\n RET\n"), 0);
+
+    const uint8_t *h = g_out.data;
+    DMOD_TEST_EXPECT_EQ(rd16(h + 6), DMV_VERSION_MINOR);
+    DMOD_TEST_EXPECT_EQ(rd32(h + 84), 4u);                   /* Gradients */
+    DMOD_TEST_EXPECT_EQ(rd32(h + 92), 10u);                  /* Stops */
+
+    /* sky: linear at 90 degrees, its first stop from a constant */
+    const uint8_t *g = table(80, 0, sizeof(dmv_gradient_t));
+    DMOD_TEST_EXPECT_EQ(strcmp(string(rd16(g)), "sky"), 0);
+    DMOD_TEST_EXPECT_TRUE(g[2] == DMV_GRADIENT_LINEAR && g[3] == 2 && rd16(g + 4) == 0 && rd16(g + 6) == 90);
+    DMOD_TEST_EXPECT_EQ(rd32(table(88, 0, sizeof(dmv_stop_t))), 0xFF3D85F5u);
+    DMOD_TEST_EXPECT_EQ(rd16(table(88, 1, sizeof(dmv_stop_t)) + 4), 1000u);
+
+    /* down: the default angle (180, down), positions spread evenly */
+    g = table(80, 1, sizeof(dmv_gradient_t));
+    DMOD_TEST_EXPECT_TRUE(g[3] == 4 && rd16(g + 4) == 2 && rd16(g + 6) == 180);
+    DMOD_TEST_EXPECT_EQ(rd16(table(88, 3, sizeof(dmv_stop_t)) + 4), 333u);
+    DMOD_TEST_EXPECT_EQ(rd16(table(88, 4, sizeof(dmv_stop_t)) + 4), 666u);
+    DMOD_TEST_EXPECT_EQ(rd16(table(88, 5, sizeof(dmv_stop_t)) + 4), 1000u);
+
+    /* glow: radial with its parameters and a decimal position */
+    g = table(80, 2, sizeof(dmv_gradient_t));
+    DMOD_TEST_EXPECT_TRUE(g[2] == DMV_GRADIENT_RADIAL && rd16(g + 6) == 25 && rd16(g + 8) == 75 &&
+                          rd16(g + 10) == 50 && rd16(g + 12) == 100);
+    DMOD_TEST_EXPECT_EQ(rd16(table(88, 7, sizeof(dmv_stop_t)) + 4), 333u);
+
+    /* dot: the inscribed ellipse */
+    g = table(80, 3, sizeof(dmv_gradient_t));
+    DMOD_TEST_EXPECT_TRUE(rd16(g + 6) == 50 && rd16(g + 8) == 50 && rd16(g + 10) == 50 && rd16(g + 12) == 50);
+
+    /* In place of a color: the paint flag and the gradient's index */
+    const uint8_t *insn = code();
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_RRECT && insn[2] == 0 && insn[3] == DMV_PAINT_GRADIENT);
+    DMOD_TEST_EXPECT_EQ(rd32(insn + 16), 0u);
+    insn += insn[1];
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_TEXT && insn[3] == (DMV_PAINT_GRADIENT | DMV_ALIGN_CENTER | DMV_ALIGN_MIDDLE));
+    DMOD_TEST_EXPECT_EQ(rd32(insn + 16), 2u);
+    insn += insn[1];
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_FILL && insn[3] == 0);
+
+    libtodmv_input_t in;
+    in.read = memory_read;
+    in.ctx = &g_out;
+    in.size = g_out.size;
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate(&in, NULL, NULL), 0);
+
+    /* Errors */
+    assemble(VIEW ".gradient g, CONIC, #000000, #FFFFFF\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 14, "unknown gradient kind"));
+    assemble(VIEW ".gradient g, LINEAR, #000000\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 1, "2 to 16 color stops"));
+    assemble(VIEW ".gradient g, LINEAR, #000000 60, #FFFFFF 40\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 34, "must not decrease"));
+    assemble(VIEW ".gradient g, LINEAR, #000000 101, #FFFFFF\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 30, "stop position"));
+    assemble(VIEW ".gradient g, RADIAL, 50, 50, #000000, #FFFFFF\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 22, "RADIAL takes cx, cy, rx, ry"));
+    assemble(VIEW ".define g, 1\n.gradient g, LINEAR, #000000, #FFFFFF\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(4, 11, "declared twice"));
+    assemble(VIEW ".gradient g, LINEAR, #000000, #FFFFFF\nmain:\n RECT 0, 0, g, 8, #000000\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(5, 13, "expected a number"));
 }
 
 DMOD_TEST_STEP(libtodmv_variables_set_the_varmask)
@@ -707,6 +781,8 @@ DMOD_TEST_STEP(libtodmv_round_trips)
         ".var $s, str[8], \"tab\\there\"\n"
         ".var $n, int, -5, env:N\n"
         ".font f, \"mono-8\"\n"
+        ".gradient shade, LINEAR, 45, #FF000000, #40FFFFFF 12.5, #FF102030\n"
+        ".gradient spot, RADIAL, -10, 50, 200, 30, #FFFFFFFF, #00000000\n"
         ".timer 250, main\n"
         ".navkeys UP, 3\n"
         ".scrollslop 12\n"
@@ -717,6 +793,8 @@ DMOD_TEST_STEP(libtodmv_round_trips)
         " ON SCROLLED, main\n"
         " IMAGE 0, 0, 64, 64, \"/flash/a.dmvi\", RIGHT|BOTTOM\n"
         " TEXT 0, 0, 10, 10, $s, f, #80FF0000, LEFT\n"
+        " TEXT 0, 0, 10, 10, $s, f, shade, RIGHT|WRAP\n"
+        " CIRCLE 5, 5, 4, spot\n"
         " END\n"
         " SET $s, \"x\"\n"
         " JGE $n, POINTER_CONTACT, main\n"
@@ -760,6 +838,6 @@ DMOD_TEST_STEP(libtodmv_rejects_invalid_views)
     view.ctx = &g_out;
     view.size = g_out.size;
     DMOD_TEST_EXPECT_EQ(libtodmv_validate(&view, &offset, &reason), -EBADMSG);
-    DMOD_TEST_EXPECT_EQ(offset, 80u);
+    DMOD_TEST_EXPECT_EQ(offset, DMV_HEADER_SIZE);
     DMOD_TEST_EXPECT_EQ(strcmp(reason, "unknown opcode"), 0);
 }

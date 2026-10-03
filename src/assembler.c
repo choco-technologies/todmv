@@ -17,9 +17,9 @@
  * variables, fonts, boxes, labels, fixups of forward references and items.
  */
 
-#define MAX_OPERAND_TOKENS  12u
+#define MAX_OPERAND_TOKENS  24u     /* .gradient: name, kind, 4 parameters, 16 stops */
 #define MAX_BOX_DEPTH       32u
-#define HEADER_SIZE         80u
+#define HEADER_SIZE         DMV_HEADER_SIZE
 #define NO_INDEX            (-1)
 
 typedef struct
@@ -63,6 +63,21 @@ typedef struct
     uint16_t    name;
     uint16_t    spec;
 } font_t;
+
+typedef struct
+{
+    uint16_t    name;
+    uint8_t     kind;
+    uint8_t     count;
+    uint16_t    first;      /* First stop */
+    int16_t     param[4];
+} gradient_t;
+
+typedef struct
+{
+    uint32_t    color;
+    uint16_t    position;   /* 1/1000 */
+} stop_t;
 
 typedef struct
 {
@@ -121,6 +136,8 @@ typedef struct
     ARRAY(uint16_t, definition_order);          /* Labels in the order they were defined */
     ARRAY(var_t,    vars);
     ARRAY(font_t,   fonts);
+    ARRAY(gradient_t, gradients);
+    ARRAY(stop_t,   stops);
     ARRAY(box_t,    boxes);
     ARRAY(define_t, defines);
     ARRAY(fixup_t,  fixups);
@@ -284,6 +301,17 @@ static int find_font(const assembler_t *a, const char *name, size_t len)
     for (uint32_t i = 0; i < a->fonts_count; i++)
     {
         if (string_is(a, a->fonts[i].name, h, name, len))
+            return (int)i;
+    }
+    return NO_INDEX;
+}
+
+static int find_gradient(const assembler_t *a, const char *name, size_t len)
+{
+    uint8_t h = hash(name, len);
+    for (uint32_t i = 0; i < a->gradients_count; i++)
+    {
+        if (string_is(a, a->gradients[i].name, h, name, len))
             return (int)i;
     }
     return NO_INDEX;
@@ -627,7 +655,7 @@ static int dest_type(uint8_t opcode)
 /* Parse operand i into its slot. A label operand is returned in *label for
  * the caller to resolve. */
 static bool parse_operand(assembler_t *a, uint8_t opcode, uint8_t i, uint8_t kind, const token_t *t,
-                          int dest, uint8_t *slot, uint8_t *varmask, int32_t *label)
+                          int dest, uint8_t *slot, uint8_t *varmask, uint8_t *paint, int32_t *label)
 {
     value_t v;
     bool ok = true;
@@ -643,6 +671,12 @@ static bool parse_operand(assembler_t *a, uint8_t opcode, uint8_t i, uint8_t kin
             {
                 /* SET into a string variable: a string or a string variable */
                 ok = parse_str_operand(a, t, &v);
+                break;
+            }
+            if (kind == DMV_OPERAND_COLOR && token_is_ident(t->text, t->len) &&
+                (v.value = find_gradient(a, t->text, t->len)) != NO_INDEX)
+            {
+                *paint = DMV_PAINT_GRADIENT;     /* A gradient instead of the color */
                 break;
             }
             ok = wide ? parse_number(a, t, INT32_MIN, UINT32_MAX, true, &v)
@@ -813,6 +847,7 @@ static void assemble_instruction(assembler_t *a, const token_t *word, const toke
     int32_t labels[DMV_MAX_OPERANDS];
     bool ok = true;
     int dest = -1;
+    uint8_t paint = 0;
 
     memset(insn, 0, sizeof(insn));
     insn[0] = (uint8_t)opcode;
@@ -826,7 +861,8 @@ static void assemble_instruction(assembler_t *a, const token_t *word, const toke
             put16(slot, DMV_NONE);      /* Left-out optional operand (REDRAW's box) */
             continue;
         }
-        if (!parse_operand(a, (uint8_t)opcode, i, info->operands[i], &ops[i], dest, slot, &insn[2], &labels[i]))
+        if (!parse_operand(a, (uint8_t)opcode, i, info->operands[i], &ops[i], dest, slot, &insn[2], &paint,
+                           &labels[i]))
         {
             ok = false;
             continue;
@@ -836,6 +872,7 @@ static void assemble_instruction(assembler_t *a, const token_t *word, const toke
     }
     if (info->flags_kind != DMV_FLAGS_NONE && n > info->operand_count)
         ok = parse_flags(a, &ops[info->operand_count], info->flags_kind, &insn[3]) && ok;
+    insn[3] |= paint;
     if (!ok || !check_structure(a, (uint8_t)opcode, word, insn, &layout))
         return;
 
@@ -1006,12 +1043,176 @@ static void directive_font(assembler_t *a, const token_t *ops)
     a->fonts_count++;
 }
 
+static bool is_number_token(const token_t *t)
+{
+    return is_digit(t->text[0]) || t->text[0] == '-';
+}
+
+/* "COLOR [POSITION]" - the position in 1/1000, -1 when left out */
+static bool parse_stop(assembler_t *a, const token_t *t, uint32_t *color, int32_t *permille)
+{
+    size_t split = 0;
+    while (split < t->len && !is_space(t->text[split]))
+        split++;
+    token_t color_token = { t->text, split, t->column };
+    value_t v;
+    if (!parse_number(a, &color_token, 0, UINT32_MAX, false, &v))
+        return false;
+    *color = (uint32_t)v.value;
+    *permille = -1;
+
+    size_t at = split;
+    while (at < t->len && is_space(t->text[at]))
+        at++;
+    if (at == t->len)
+        return true;
+    token_t position = { t->text + at, t->len - at, t->column + (uint32_t)at };
+    if (position.len > 1 && position.text[position.len - 1] == '%')
+        position.len--;
+    /* Percent with at most one decimal: "50", "33.3" */
+    int64_t value;
+    size_t point = 0;
+    while (point < position.len && position.text[point] != '.')
+        point++;
+    bool ok = is_number_token(&position) && parse_integer(position.text, point, &value) && value >= 0;
+    int64_t tenths = 0;
+    if (ok && point < position.len)
+    {
+        ok = position.len == point + 2U && is_digit(position.text[point + 1]);
+        tenths = ok ? position.text[point + 1] - '0' : 0;
+    }
+    if (!ok || value * 10 + tenths > (int64_t)DMV_STOP_SCALE)
+    {
+        error(a, position.column, "expected a stop position 0 ... 100, got '%s'", SHOW(&position));
+        return false;
+    }
+    *permille = (int32_t)(value * 10 + tenths);
+    return true;
+}
+
+static void directive_gradient(assembler_t *a, const token_t *word, const token_t *ops, uint32_t n)
+{
+    gradient_t g;
+    uint32_t colors[DMV_MAX_STOPS];
+    int32_t positions[DMV_MAX_STOPS];      /* 1/1000, -1 = left out */
+    uint32_t next = 2;
+    int64_t value;
+
+    if (n < 2)
+    {
+        error(a, word->column, ".gradient takes a name, LINEAR or RADIAL, and its stops");
+        return;
+    }
+    if (!valid_name(a, &ops[0], "gradient"))
+        return;
+    if (find_gradient(a, ops[0].text, ops[0].len) != NO_INDEX || find_define(a, ops[0].text, ops[0].len) != NULL)
+    {
+        error(a, ops[0].column, "'%s' declared twice", SHOW(&ops[0]));
+        return;
+    }
+    memset(&g, 0, sizeof(g));
+    if (token_ieq(ops[1].text, ops[1].len, "LINEAR"))
+    {
+        g.kind = DMV_GRADIENT_LINEAR;
+        g.param[0] = 180;                   /* Down, as in CSS */
+        if (n > next && is_number_token(&ops[next]))
+        {
+            if (!immediate(a, &ops[next], INT16_MIN, INT16_MAX, &value))
+                return;
+            g.param[0] = (int16_t)(((value % 360) + 360) % 360);
+            next++;
+        }
+    }
+    else if (token_ieq(ops[1].text, ops[1].len, "RADIAL"))
+    {
+        g.kind = DMV_GRADIENT_RADIAL;
+        for (uint32_t k = 0; k < 4U; k++)
+            g.param[k] = 50;                /* The ellipse inscribed in the shape */
+        if (n > next && is_number_token(&ops[next]))
+        {
+            uint32_t numbers = 0;
+            while (next + numbers < n && is_number_token(&ops[next + numbers]))
+                numbers++;
+            if (numbers != 4U)
+            {
+                error(a, ops[next].column, "RADIAL takes cx, cy, rx, ry");
+                return;
+            }
+            for (uint32_t k = 0; k < 4U; k++, next++)
+            {
+                if (!immediate(a, &ops[next], (k < 2U) ? INT16_MIN : 1, INT16_MAX, &value))
+                    return;
+                g.param[k] = (int16_t)value;
+            }
+        }
+    }
+    else
+    {
+        error(a, ops[1].column, "unknown gradient kind '%s' (LINEAR or RADIAL)", SHOW(&ops[1]));
+        return;
+    }
+
+    uint32_t count = n - next;
+    if (count < DMV_MIN_STOPS || count > DMV_MAX_STOPS)
+    {
+        error(a, word->column, "a gradient takes %u to %u color stops", (unsigned)DMV_MIN_STOPS, (unsigned)DMV_MAX_STOPS);
+        return;
+    }
+    for (uint32_t k = 0; k < count; k++)
+    {
+        if (!parse_stop(a, &ops[next + k], &colors[k], &positions[k]))
+            return;
+    }
+
+    /* Left-out positions, as in CSS: the ends at 0 and 100 %, the others
+     * evenly between their neighbors */
+    if (positions[0] < 0)
+        positions[0] = 0;
+    if (positions[count - 1U] < 0)
+        positions[count - 1U] = (int32_t)DMV_STOP_SCALE;
+    for (uint32_t k = 1; k < count; k++)
+    {
+        if (positions[k] >= 0)
+            continue;
+        uint32_t end = k;
+        while (positions[end] < 0)
+            end++;
+        for (uint32_t m = k; m < end; m++)
+            positions[m] = positions[k - 1U] + (positions[end] - positions[k - 1U]) * (int32_t)(m - k + 1U) /
+                                               (int32_t)(end - k + 1U);
+    }
+    for (uint32_t k = 1; k < count; k++)
+    {
+        if (positions[k] < positions[k - 1U])
+        {
+            error(a, ops[next + k].column, "stop positions must not decrease");
+            return;
+        }
+    }
+
+    int name = intern(a, ops[0].text, ops[0].len);
+    if (name == NO_INDEX || a->stops_count + count > 0xFFFFu || !PUSH(a, gradients))
+        return;
+    g.name = (uint16_t)name;
+    g.count = (uint8_t)count;
+    g.first = (uint16_t)a->stops_count;
+    for (uint32_t k = 0; k < count; k++)
+    {
+        if (!PUSH(a, stops))
+            return;
+        a->stops[a->stops_count].color = colors[k];
+        a->stops[a->stops_count].position = (uint16_t)positions[k];
+        a->stops_count++;
+    }
+    a->gradients[a->gradients_count++] = g;
+}
+
 static void directive_define(assembler_t *a, const token_t *ops)
 {
     int64_t value;
     if (!valid_name(a, &ops[0], "constant"))
         return;
-    if (find_define(a, ops[0].text, ops[0].len) != NULL ||
+    if (find_define(a, ops[0].text, ops[0].len) != NULL || find_gradient(a, ops[0].text, ops[0].len) != NO_INDEX ||
         token_eq(ops[0].text, ops[0].len, "POINTER_CONTACT") || token_eq(ops[0].text, ops[0].len, "FOCUS_CONTACT"))
     {
         error(a, ops[0].column, "constant '%s' defined twice", SHOW(&ops[0]));
@@ -1167,6 +1368,10 @@ static void assemble_directive(assembler_t *a, const token_t *word, const token_
     {
         if (operand_count(a, word, n, 2, 2))
             directive_font(a, ops);
+    }
+    else if (token_ieq(word->text, word->len, ".gradient"))
+    {
+        directive_gradient(a, word, ops, n);
     }
     else if (token_ieq(word->text, word->len, ".define"))
     {
@@ -1422,7 +1627,9 @@ static void finish_output(assembler_t *a)
     memset(header, 0, sizeof(header));
     header[0] = DMV_MAGIC_0; header[1] = DMV_MAGIC_1; header[2] = DMV_MAGIC_2; header[3] = DMV_MAGIC_3;
     put16(header + 4, DMV_VERSION_MAJOR);
-    put16(header + 6, DMV_VERSION_MINOR);
+    /* A view without gradients is a version 0.1 view - runtimes that know
+     * only 0.1 run it (they find every table through the header) */
+    put16(header + 6, (a->gradients_count != 0) ? DMV_VERSION_MINOR : 1U);
     put16(header + 12, a->width);
     put16(header + 14, a->height);
     put16(header + 16, a->view_name);
@@ -1485,6 +1692,27 @@ static void finish_output(assembler_t *a)
         writer_put16(w, l->word);
     }
 
+    put_section(header, 80, writer_tell(w), a->gradients_count);
+    for (uint32_t i = 0; i < a->gradients_count; i++)
+    {
+        const gradient_t *g = &a->gradients[i];
+        writer_put16(w, g->name);
+        writer_put8(w, g->kind);
+        writer_put8(w, g->count);
+        writer_put16(w, g->first);
+        for (uint32_t k = 0; k < 4U; k++)
+            writer_put16(w, (uint16_t)g->param[k]);
+        writer_put16(w, 0);
+    }
+
+    put_section(header, 88, writer_tell(w), a->stops_count);
+    for (uint32_t i = 0; i < a->stops_count; i++)
+    {
+        writer_put32(w, a->stops[i].color);
+        writer_put16(w, a->stops[i].position);
+        writer_put16(w, 0);
+    }
+
     a->result->size = writer_tell(w);
     put32(header + 8, a->result->size);
     writer_seek(w, 0);
@@ -1498,7 +1726,7 @@ static void release(assembler_t *a)
         Dmod_Free(a->files[i]);
 
     void *arrays[] = { a->files, a->string_at, a->string_hash, a->labels, a->definition_order, a->vars,
-                       a->fonts, a->boxes, a->defines, a->fixups, a->items };
+                       a->fonts, a->gradients, a->stops, a->boxes, a->defines, a->fixups, a->items };
     for (size_t i = 0; i < sizeof(arrays) / sizeof(arrays[0]); i++)
     {
         if (arrays[i] != NULL)
