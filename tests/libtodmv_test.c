@@ -627,6 +627,12 @@ DMOD_TEST_STEP(libtodmv_checks_types)
     assemble(VIEW ".var $s, str[8], \"\"\nmain:\n FORMAT $s, \"%d %d\", 1\n RET\n");
     DMOD_TEST_EXPECT_TRUE(first_error(5, 13, "exactly one"));
 
+    /* A width, padded with spaces or zeros */
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW ".var $s, str[8], \"\"\nmain:\n FORMAT $s, \"%02d:%%02d\", 1\n FORMAT $s, \"%4x\", 1\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(g_error_count, 0u);
+    assemble(VIEW ".var $s, str[8], \"\"\nmain:\n FORMAT $s, \"%123d\", 1\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(5, 13, "exactly one"));
+
     assemble(VIEW ".var $s, str[2], \"long\"\nmain:\n RET\n");
     DMOD_TEST_EXPECT_TRUE(first_error(3, 18, "longer than 2 bytes"));
 

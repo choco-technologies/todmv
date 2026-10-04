@@ -570,7 +570,9 @@ static bool parse_str_operand(assembler_t *a, const token_t *t, value_t *v)
     return v->value != NO_INDEX;
 }
 
-/* FORMAT strings take exactly one %d or %x; "%%" is a literal '%'. */
+/* FORMAT strings take exactly one %d or %x, optionally with a width of up
+ * to two digits, padded with zeros after a '0' ("%02d", "%4x"); "%%" is a
+ * literal '%'. */
 static bool format_valid(const assembler_t *a, uint32_t index)
 {
     const char *s = string_text(a, index);
@@ -580,9 +582,18 @@ static bool format_valid(const assembler_t *a, uint32_t index)
         if (*s != '%')
             continue;
         s++;
+        if (*s == '%')
+            continue;
+        if (*s == '0')
+            s++;
+        for (int digits = 0; *s >= '0' && *s <= '9'; s++)
+        {
+            if (++digits > 2)
+                return false;
+        }
         if (*s == 'd' || *s == 'x')
             conversions++;
-        else if (*s != '%')
+        else
             return false;
     }
     return conversions == 1;
@@ -694,7 +705,7 @@ static bool parse_operand(assembler_t *a, uint8_t opcode, uint8_t i, uint8_t kin
             ok = parse_str_operand(a, t, &v);
             if (ok && opcode == DMV_OP_FORMAT && !v.variable && !format_valid(a, (uint32_t)v.value))
             {
-                error(a, t->column, "format needs exactly one %%d or %%x");
+                error(a, t->column, "format needs exactly one %%d or %%x (with a width: %%02d, %%4x)");
                 ok = false;
             }
             break;
