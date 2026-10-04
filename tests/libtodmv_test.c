@@ -373,6 +373,31 @@ DMOD_TEST_STEP(libtodmv_encodes_opacity)
     DMOD_TEST_EXPECT_TRUE(first_error(4, 2, "OPACITY must directly follow"));
 }
 
+DMOD_TEST_STEP(libtodmv_encodes_icons)
+{
+    /* x, y, w, h, path, paint - like TEXT, a gradient in place of the color */
+    static const uint8_t icon[20] = { DMV_OP_ICON, 20, 0, DMV_ALIGN_CENTER | DMV_ALIGN_MIDDLE,
+                                      1, 0,  2, 0,  16, 0,  16, 0,  1, 0,  0, 0,  0x00, 0x00, 0xFF, 0xFF };
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW ".gradient g, LINEAR, 90, #000000, #FFFFFF\n"
+                                 "main:\n ICON 1, 2, 16, 16, \"wifi.dmvi\", #FFFF0000, CENTER|MIDDLE\n"
+                                 " ICON 0, 0, 8, 8, \"wifi.dmvi\", g, LEFT\n"
+                                 " IMAGE 0, 0, 8, 8, \"photo.dmvi\", LEFT\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(rd16(g_out.data + 6), 4);           /* ICON: version 0.4 */
+    const uint8_t *insn = code();
+    DMOD_TEST_EXPECT_TRUE(bytes_equal(insn, icon, 12));
+    DMOD_TEST_EXPECT_TRUE(bytes_equal(insn + 14, icon + 14, 6));
+    insn += insn[1];
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_ICON && insn[3] == DMV_PAINT_GRADIENT && rd32(insn + 16) == 0);
+
+    libtodmv_input_t in;
+    in.read = memory_read;
+    in.ctx = &g_out;
+    in.size = g_out.size;
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate(&in, NULL, NULL), 0);
+
+    DMOD_TEST_EXPECT_TRUE(assemble(VIEW "main:\n ICON 0, 0, 8, 8, \"a.dmvi\", #FFFFFF\n RET\n") != 0);   /* no alignment */
+}
+
 DMOD_TEST_STEP(libtodmv_variables_set_the_varmask)
 {
     DMOD_TEST_EXPECT_EQ(assemble(VIEW

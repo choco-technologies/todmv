@@ -61,6 +61,7 @@ static const dmv_opcode_info_t g_opcodes[OPCODE_TABLE_SIZE] = {
     OP(DMV_OP_RING,     "RING",     DRAW,   5, 0, F_NONE,  false, V16, V16, V16, V16, COLOR),
     OP(DMV_OP_TEXT,     "TEXT",     DRAW,   7, 0, F_ALIGN, true,  V16, V16, V16, V16, STR, FONT, COLOR),
     OP(DMV_OP_IMAGE,    "IMAGE",    DRAW,   5, 0, F_ALIGN, true,  V16, V16, V16, V16, STR),
+    OP(DMV_OP_ICON,     "ICON",     DRAW,   6, 0, F_ALIGN, true,  V16, V16, V16, V16, STR, COLOR),
 
     OP(DMV_OP_SET,      "SET",      VARIA,  2, 0, F_NONE,  false, VAR, V32),
     OP(DMV_OP_ADD,      "ADD",      VARIA,  2, 0, F_NONE,  false, VAR, V32),

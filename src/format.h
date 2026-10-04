@@ -20,10 +20,10 @@
 
 /** Format version this header describes. */
 #define DMV_VERSION_MAJOR        0
-#define DMV_VERSION_MINOR        3
+#define DMV_VERSION_MINOR        4
 
 /** Header size: version 0.2 added the gradient tables at its end (0.3:
- * OPACITY, no change to the header). */
+ * OPACITY, 0.4: ICON - no change to the header). */
 #define DMV_HEADER_SIZE          96u
 #define DMV_HEADER_SIZE_0_1      80u
 
@@ -88,6 +88,7 @@ typedef enum
     DMV_OP_RING      = 0x17,
     DMV_OP_TEXT      = 0x18,
     DMV_OP_IMAGE     = 0x19,
+    DMV_OP_ICON      = 0x1A,
 
     /* Variables */
     DMV_OP_SET       = 0x40,
@@ -162,7 +163,7 @@ typedef enum
 #define DMV_SCROLL_BAR           0x04u
 #define DMV_SCROLL_FLAGS_MASK    0x07u
 
-/** TEXT / IMAGE alignment flags */
+/** TEXT / IMAGE / ICON alignment flags */
 #define DMV_ALIGN_LEFT           0x00u
 #define DMV_ALIGN_CENTER         0x01u
 #define DMV_ALIGN_RIGHT          0x02u
