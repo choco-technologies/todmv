@@ -74,6 +74,7 @@ static const dmv_opcode_info_t g_opcodes[OPCODE_TABLE_SIZE] = {
     OP(DMV_OP_CLAMP,    "CLAMP",    VARIA,  3, 0, F_NONE,  false, VAR, V32, V32),
     OP(DMV_OP_TOGGLE,   "TOGGLE",   VARIA,  1, 0, F_NONE,  false, VAR),
     OP(DMV_OP_FORMAT,   "FORMAT",   VARIA,  3, 0, F_NONE,  false, VAR, STR, V32),
+    OP(DMV_OP_APPEND,   "APPEND",   VARIA,  2, 0, F_NONE,  false, VAR, STR),
 
     OP(DMV_OP_ON,       "ON",       INPUT,  2, 0, F_NONE,  false, EVENT, LABEL),
 
@@ -441,6 +442,7 @@ static int dest_type(uint8_t opcode)
     {
         case DMV_OP_SET:    return -1;              /* Either */
         case DMV_OP_FORMAT: return DMV_VAR_STR;
+        case DMV_OP_APPEND: return DMV_VAR_STR;
         default:            return DMV_VAR_INT;
     }
 }
