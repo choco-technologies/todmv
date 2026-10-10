@@ -20,10 +20,10 @@
 
 /** Format version this header describes. */
 #define DMV_VERSION_MAJOR        0
-#define DMV_VERSION_MINOR        4
+#define DMV_VERSION_MINOR        5
 
 /** Header size: version 0.2 added the gradient tables at its end (0.3:
- * OPACITY, 0.4: ICON - no change to the header). */
+ * OPACITY, 0.4: ICON, 0.5: APPEND - no change to the header). */
 #define DMV_HEADER_SIZE          96u
 #define DMV_HEADER_SIZE_0_1      80u
 
@@ -102,6 +102,7 @@ typedef enum
     DMV_OP_CLAMP     = 0x48,
     DMV_OP_TOGGLE    = 0x49,
     DMV_OP_FORMAT    = 0x4A,
+    DMV_OP_APPEND    = 0x4B,
 
     /* Input */
     DMV_OP_ON        = 0x60,

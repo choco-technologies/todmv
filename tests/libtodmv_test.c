@@ -373,6 +373,26 @@ DMOD_TEST_STEP(libtodmv_encodes_opacity)
     DMOD_TEST_EXPECT_TRUE(first_error(4, 2, "OPACITY must directly follow"));
 }
 
+DMOD_TEST_STEP(libtodmv_encodes_append)
+{
+    /* $d, a string or a string variable - only into a string variable */
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW ".var $s, str[16], \"a\"\n.var $t, str[8], \"b\"\n"
+                                 "main:\n APPEND $s, \"!\"\n APPEND $s, $t\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(rd16(g_out.data + 6), 5);           /* APPEND: version 0.5 */
+    const uint8_t *insn = code();
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_APPEND && insn[1] == 8 && insn[2] == 0 && rd16(insn + 4) == 0);
+    insn += insn[1];
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_APPEND && insn[2] == 0x02 && rd16(insn + 6) == 1);     /* $t: a variable */
+
+    libtodmv_input_t in;
+    in.read = memory_read;
+    in.ctx = &g_out;
+    in.size = g_out.size;
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate(&in, NULL, NULL), 0);
+
+    DMOD_TEST_EXPECT_TRUE(assemble(VIEW ".var $n, int, 0\nmain:\n APPEND $n, \"x\"\n RET\n") != 0);   /* not a string */
+}
+
 DMOD_TEST_STEP(libtodmv_encodes_icons)
 {
     /* x, y, w, h, path, paint - like TEXT, a gradient in place of the color */

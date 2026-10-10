@@ -151,6 +151,7 @@ typedef struct
     bool                      have_view, have_size, have_longpress, have_scrollslop;
     bool                      uses_opacity;     /* OPACITY: a version 0.3 view */
     bool                      uses_icon;        /* ICON: a version 0.4 view */
+    bool                      uses_append;      /* APPEND: a version 0.5 view */
     uint16_t                  view_name, width, height, longpress, scrollslop;
     int32_t                   entry;            /* Label index, or NO_INDEX */
 } assembler_t;
@@ -661,6 +662,7 @@ static int dest_type(uint8_t opcode)
     {
         case DMV_OP_SET:    return -1;
         case DMV_OP_FORMAT: return DMV_VAR_STR;
+        case DMV_OP_APPEND: return DMV_VAR_STR;
         default:            return DMV_VAR_INT;
     }
 }
@@ -838,6 +840,9 @@ static bool check_structure(assembler_t *a, uint8_t opcode, const token_t *word,
             return true;
         case DMV_OP_ICON:
             a->uses_icon = true;
+            return true;
+        case DMV_OP_APPEND:
+            a->uses_append = true;
             return true;
         default:
             return true;
@@ -1653,7 +1658,7 @@ static void finish_output(assembler_t *a)
     put16(header + 4, DMV_VERSION_MAJOR);
     /* The oldest version that has what the view uses: runtimes that know
      * only that run it (they find every table through the header) */
-    put16(header + 6, a->uses_icon ? 4U : a->uses_opacity ? 3U : (a->gradients_count != 0) ? 2U : 1U);
+    put16(header + 6, a->uses_append ? 5U : a->uses_icon ? 4U : a->uses_opacity ? 3U : (a->gradients_count != 0) ? 2U : 1U);
     put16(header + 12, a->width);
     put16(header + 14, a->height);
     put16(header + 16, a->view_name);
