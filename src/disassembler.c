@@ -302,7 +302,7 @@ static void print_directives(disassembler_t *d, const uint8_t *h)
     {
         uint8_t v[sizeof(dmv_var_t)];
         rd(d, d->vars.offset + i * (uint32_t)sizeof(dmv_var_t), v, sizeof(v));
-        writer_printf(&d->out, ".var    $");
+        writer_printf(&d->out, (v[1] & DMV_VARF_PROP) ? ".prop   $" : ".var    $");
         print_string(d, get16(v + 4), false);
         if (v[0] == DMV_VAR_STR)
         {
@@ -315,6 +315,11 @@ static void print_directives(disassembler_t *d, const uint8_t *h)
         {
             writer_printf(&d->out, ", env:");
             print_string(d, get16(v + 6), false);
+        }
+        else if (v[1] & DMV_VARF_PROP)
+        {
+            writer_printf(&d->out, ", ");
+            print_literal(d, get16(v + 6));
         }
         writer_put8(&d->out, '\n');
     }
@@ -329,6 +334,16 @@ static void print_directives(disassembler_t *d, const uint8_t *h)
             case DMV_ITEM_INIT:   writer_printf(&d->out, ".init   "); break;
             case DMV_ITEM_TIMER:  writer_printf(&d->out, ".timer  %u, ", value); break;
             case DMV_ITEM_KEY:    writer_printf(&d->out, ".key    %u, ", value); break;
+            case DMV_ITEM_CHANGE:
+                writer_printf(&d->out, ".change $");
+                if (value < d->vars.count)
+                {
+                    uint8_t cv[sizeof(dmv_var_t)];
+                    rd(d, d->vars.offset + value * (uint32_t)sizeof(dmv_var_t), cv, sizeof(cv));
+                    print_string(d, get16(cv + 4), false);
+                }
+                writer_printf(&d->out, ", ");
+                break;
             default:              writer_printf(&d->out, ".navkeys %s, %u\n", nav_role_name(it[1]), value); continue;
         }
         print_label(d, get16(it + 2));

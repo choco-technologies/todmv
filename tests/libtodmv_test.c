@@ -393,6 +393,48 @@ DMOD_TEST_STEP(libtodmv_encodes_append)
     DMOD_TEST_EXPECT_TRUE(assemble(VIEW ".var $n, int, 0\nmain:\n APPEND $n, \"x\"\n RET\n") != 0);   /* not a string */
 }
 
+DMOD_TEST_STEP(libtodmv_encodes_the_channel)
+{
+    /* Properties (bound by their name), a .change handler of one, EMIT with and without a value */
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW
+        ".prop $title, str[32], \"-\", \"title\"\n"
+        ".prop $pos, int, 0, \"position\"\n"
+        ".var  $n, int, 3\n"
+        ".change $pos, moved\n"
+        "main:\n EMIT \"next\"\n EMIT \"select\", $n\n RET\n"
+        "moved:\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(rd16(g_out.data + 6), 6);           /* The channel: version 0.6 */
+    const uint8_t *vars = table(40, 0, 12);
+    DMOD_TEST_EXPECT_EQ(vars[1], DMV_VARF_PROP);
+    DMOD_TEST_EXPECT_EQ(table(40, 2, 12)[1], 0);
+    DMOD_TEST_EXPECT_EQ(table(64, 0, 8)[0], DMV_ITEM_CHANGE);
+    DMOD_TEST_EXPECT_EQ(rd32(table(64, 0, 8) + 4), 1u);     /* $pos */
+    const uint8_t *insn = code();
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_EMIT && insn[1] == 12 && rd32(insn + 8) == 0u);   /* No value: 0 */
+    insn += insn[1];
+    DMOD_TEST_EXPECT_TRUE(insn[0] == DMV_OP_EMIT && (insn[2] & 0x02) != 0 && rd16(insn + 8) == 2);   /* $n */
+
+    libtodmv_input_t in;
+    in.read = memory_read;
+    in.ctx = &g_out;
+    in.size = g_out.size;
+    DMOD_TEST_EXPECT_EQ(libtodmv_validate(&in, NULL, NULL), 0);
+
+    /* Without it a view stays as old as before */
+    DMOD_TEST_EXPECT_EQ(assemble(VIEW ".var $n, int, 0\nmain:\n RET\n"), 0);
+    DMOD_TEST_EXPECT_EQ(rd16(g_out.data + 6), 1);
+
+    assemble(VIEW ".var $n, int, 0\n.change $n, main\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(4, 9, "is not a property"));
+    assemble(VIEW ".change $x, main\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 9, "unknown variable"));
+    assemble(VIEW ".prop $a, int, 0, \"p\"\n.prop $b, int, 0, \"p\"\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(4, 19, "declared twice"));
+    assemble(VIEW ".prop $a, int, 0, p\nmain:\n RET\n");
+    DMOD_TEST_EXPECT_TRUE(first_error(3, 19, "as a string"));
+    DMOD_TEST_EXPECT_TRUE(assemble(VIEW ".prop $a, int, 0\nmain:\n RET\n") != 0);
+}
+
 DMOD_TEST_STEP(libtodmv_encodes_icons)
 {
     /* x, y, w, h, path, paint - like TEXT, a gradient in place of the color */
@@ -859,6 +901,8 @@ DMOD_TEST_STEP(libtodmv_round_trips)
     check_round_trip(VIEW
         ".var $s, str[8], \"tab\\there\"\n"
         ".var $n, int, -5, env:N\n"
+        ".prop $p, str[4], \"ab\", \"the p\"\n"
+        ".change $p, main\n"
         ".font f, \"mono-8\"\n"
         ".gradient shade, LINEAR, 45, #FF000000, #40FFFFFF 12.5, #FF102030\n"
         ".gradient spot, RADIAL, -10, 50, 200, 30, #FFFFFFFF, #00000000\n"
@@ -882,6 +926,7 @@ DMOD_TEST_STEP(libtodmv_round_trips)
         " SETFOCUS @list\n"
         " EXEC \"ifconfig eth0 up\"\n"
         " SIGNAL \"ui\"\n"
+        " EMIT \"ui\", $n\n"
         " GOTO \"/flash/next.dmv\"\n"
         " RELOAD \"/flash/a.dmvi\"\n"
         " TOGGLE $n\n"
