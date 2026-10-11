@@ -20,7 +20,7 @@
 
 /** Format version this header describes. */
 #define DMV_VERSION_MAJOR        0
-#define DMV_VERSION_MINOR        5
+#define DMV_VERSION_MINOR        6
 
 /** Header size: version 0.2 added the gradient tables at its end (0.3:
  * OPACITY, 0.4: ICON, 0.5: APPEND - no change to the header). */
@@ -115,6 +115,7 @@ typedef enum
     DMV_OP_SCROLLTO  = 0x84,
     DMV_OP_RELOAD    = 0x85,
     DMV_OP_SETFOCUS  = 0x86,
+    DMV_OP_EMIT      = 0x87,     /**< Version 0.6 */
 } dmv_opcode_t;
 
 /** Instruction categories. */
@@ -276,6 +277,7 @@ typedef enum
 
 /** Variable flags. */
 #define DMV_VARF_ENV             0x01u   /**< Bound to the dmenv variable `env` */
+#define DMV_VARF_PROP            0x02u   /**< A property of the view (.prop) - `env` is its name - version 0.6 */
 
 /** View-level items (directives with a handler). */
 typedef enum
@@ -284,6 +286,7 @@ typedef enum
     DMV_ITEM_TIMER,      /**< .timer value=ms, label */
     DMV_ITEM_KEY,        /**< .key value=button, label */
     DMV_ITEM_NAVKEY,     /**< .navkeys arg=role, value=button, no label */
+    DMV_ITEM_CHANGE,     /**< .change value=variable index, label - version 0.6 */
 
     DMV_ITEM_COUNT
 } dmv_item_kind_t;

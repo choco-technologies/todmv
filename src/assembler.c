@@ -152,6 +152,7 @@ typedef struct
     bool                      uses_opacity;     /* OPACITY: a version 0.3 view */
     bool                      uses_icon;        /* ICON: a version 0.4 view */
     bool                      uses_append;      /* APPEND: a version 0.5 view */
+    bool                      uses_channel;     /* .prop, .change, EMIT: a version 0.6 view */
     uint16_t                  view_name, width, height, longpress, scrollslop;
     int32_t                   entry;            /* Label index, or NO_INDEX */
 } assembler_t;
@@ -646,7 +647,7 @@ static bool parse_flags(assembler_t *a, const token_t *t, uint8_t flags_kind, ui
 
 static int find_opcode(const token_t *t)
 {
-    for (int op = 0; op <= DMV_OP_SETFOCUS; op++)
+    for (int op = 0; op <= DMV_OP_EMIT; op++)
     {
         const dmv_opcode_info_t *info = dmv_get_opcode_info((uint8_t)op);
         if (info != NULL && token_ieq(t->text, t->len, info->mnemonic))
@@ -844,6 +845,9 @@ static bool check_structure(assembler_t *a, uint8_t opcode, const token_t *word,
         case DMV_OP_APPEND:
             a->uses_append = true;
             return true;
+        case DMV_OP_EMIT:
+            a->uses_channel = true;
+            return true;
         default:
             return true;
     }
@@ -887,7 +891,11 @@ static void assemble_instruction(assembler_t *a, const token_t *word, const toke
         labels[i] = NO_INDEX;
         if (i >= n)
         {
-            put16(slot, DMV_NONE);      /* Left-out optional operand (REDRAW's box) */
+            /* Left-out optional operand: no box (REDRAW), a value of 0 (EMIT) */
+            if (info->operands[i] == DMV_OPERAND_V32)
+                put32(slot, 0);
+            else
+                put16(slot, DMV_NONE);
             continue;
         }
         if (!parse_operand(a, (uint8_t)opcode, i, info->operands[i], &ops[i], dest, slot, &insn[2], &paint,
@@ -966,7 +974,8 @@ static bool valid_name(assembler_t *a, const token_t *t, const char *what)
     return false;
 }
 
-static void directive_var(assembler_t *a, const token_t *ops, uint32_t n)
+/* .var $name, type, init [, env:NAME] - and .prop $name, type, init, "name" */
+static void directive_var(assembler_t *a, const token_t *ops, uint32_t n, bool prop)
 {
     const token_t *name = &ops[0], *type = &ops[1], *init = &ops[2];
     var_t v;
@@ -1027,7 +1036,34 @@ static void directive_var(assembler_t *a, const token_t *ops, uint32_t n)
     }
 
     v.env = DMV_NONE;
-    if (n == 4)
+    if (prop)
+    {
+        /* The property's name, as the application knows it */
+        const token_t *pname = &ops[3];
+        size_t plen = 0;
+        int index = is_string_literal(pname) ? parse_string_literal(a, pname, &plen) : NO_INDEX;
+        if (!is_string_literal(pname))
+            error(a, pname->column, "expected the property's name as a string, got '%s'", SHOW(pname));
+        if (index == NO_INDEX)
+            return;
+        if (plen == 0)
+        {
+            error(a, pname->column, "a property needs a name");
+            return;
+        }
+        for (uint32_t i = 0; i < a->vars_count; i++)
+        {
+            if ((a->vars[i].flags & DMV_VARF_PROP) != 0 && a->vars[i].env == (uint16_t)index)
+            {
+                error(a, pname->column, "property %s declared twice", SHOW(pname));
+                return;
+            }
+        }
+        v.env = (uint16_t)index;
+        v.flags = DMV_VARF_PROP;
+        a->uses_channel = true;
+    }
+    else if (n == 4)
     {
         const token_t *env = &ops[3];
         if (env->len < 5 || !token_ieq(env->text, 4, "env:"))
@@ -1391,7 +1427,33 @@ static void assemble_directive(assembler_t *a, const token_t *word, const token_
     else if (token_ieq(word->text, word->len, ".var"))
     {
         if (operand_count(a, word, n, 3, 4))
-            directive_var(a, ops, n);
+            directive_var(a, ops, n, false);
+    }
+    else if (token_ieq(word->text, word->len, ".prop"))
+    {
+        if (operand_count(a, word, n, 4, 4))
+            directive_var(a, ops, n, true);
+    }
+    else if (token_ieq(word->text, word->len, ".change"))
+    {
+        /* .change $var, label - the handler of a change made from outside (a property) */
+        int32_t label, var = NO_INDEX;
+        if (!operand_count(a, word, n, 2, 2))
+            return;
+        if (ops[0].len > 1 && ops[0].text[0] == '$')
+            var = find_var(a, ops[0].text + 1, ops[0].len - 1);
+        if (var == NO_INDEX)
+        {
+            error(a, ops[0].column, "unknown variable '%s' (declare it before .change)", SHOW(&ops[0]));
+            return;
+        }
+        if ((a->vars[var].flags & DMV_VARF_PROP) == 0)
+        {
+            error(a, ops[0].column, "'%s' is not a property (.prop)", SHOW(&ops[0]));
+            return;
+        }
+        if ((label = label_use(a, &ops[1])) != NO_INDEX)
+            add_item(a, DMV_ITEM_CHANGE, 0, label, (uint32_t)var);
     }
     else if (token_ieq(word->text, word->len, ".font"))
     {
@@ -1658,7 +1720,7 @@ static void finish_output(assembler_t *a)
     put16(header + 4, DMV_VERSION_MAJOR);
     /* The oldest version that has what the view uses: runtimes that know
      * only that run it (they find every table through the header) */
-    put16(header + 6, a->uses_append ? 5U : a->uses_icon ? 4U : a->uses_opacity ? 3U : (a->gradients_count != 0) ? 2U : 1U);
+    put16(header + 6, a->uses_channel ? 6U : a->uses_append ? 5U : a->uses_icon ? 4U : a->uses_opacity ? 3U : (a->gradients_count != 0) ? 2U : 1U);
     put16(header + 12, a->width);
     put16(header + 14, a->height);
     put16(header + 16, a->view_name);

@@ -32,7 +32,7 @@
 #define F_SCR   DMV_FLAGS_SCROLL
 #define F_ALIGN DMV_FLAGS_ALIGN
 
-#define OPCODE_TABLE_SIZE   (DMV_OP_SETFOCUS + 1)
+#define OPCODE_TABLE_SIZE   (DMV_OP_EMIT + 1)
 
 static const dmv_opcode_info_t g_opcodes[OPCODE_TABLE_SIZE] = {
     OP(DMV_OP_NOP,      "NOP",      FLOW,   0, 0, F_NONE,  false, 0),
@@ -85,6 +85,7 @@ static const dmv_opcode_info_t g_opcodes[OPCODE_TABLE_SIZE] = {
     OP(DMV_OP_SCROLLTO, "SCROLLTO", ACTION, 3, 0, F_NONE,  false, BOX, V16, V16),
     OP(DMV_OP_RELOAD,   "RELOAD",   ACTION, 1, 0, F_NONE,  false, STR),
     OP(DMV_OP_SETFOCUS, "SETFOCUS", ACTION, 1, 0, F_NONE,  false, BOX),
+    OP(DMV_OP_EMIT,     "EMIT",     ACTION, 2, 1, F_NONE,  false, STR, V32),
 };
 
 /* ---- Little-endian access (the data may be unaligned) ---- */
@@ -320,8 +321,11 @@ static dmv_status_t check_vars(validator_t *v)
 
         bool ok = (type == DMV_VAR_INT && capacity == 0) ||
                   (type == DMV_VAR_STR && capacity > 0 && string_valid(v, init));
-        ok = ok && (flags & ~DMV_VARF_ENV) == 0 && string_valid(v, name);
-        ok = ok && ((flags & DMV_VARF_ENV) ? string_valid(v, env) : env == DMV_NONE);
+        /* Bound to dmenv or a property (version 0.6) - not both; `env` names it */
+        uint8_t binding = flags & (DMV_VARF_ENV | DMV_VARF_PROP);
+        ok = ok && (flags & ~(DMV_VARF_ENV | DMV_VARF_PROP)) == 0 && binding != (DMV_VARF_ENV | DMV_VARF_PROP);
+        ok = ok && string_valid(v, name);
+        ok = ok && ((binding != 0) ? string_valid(v, env) : env == DMV_NONE);
         if (!ok)
             return fail(v, DMV_ERR_TABLE, at);
         v->var_types[i] = type;
@@ -606,6 +610,7 @@ static dmv_status_t check_items(validator_t *v)
         {
             case DMV_ITEM_INIT:   ok = arg == 0 && value == 0 && is_boundary(v, label); break;
             case DMV_ITEM_TIMER:  ok = arg == 0 && value > 0 && is_boundary(v, label); break;
+            case DMV_ITEM_CHANGE: ok = arg == 0 && value < v->h.vars.count && is_boundary(v, label); break;
             case DMV_ITEM_KEY:    ok = arg == 0 && value < 32 && is_boundary(v, label); break;
             case DMV_ITEM_NAVKEY: ok = arg < DMV_NAV_COUNT && value < 32 && label == DMV_NONE; break;
             default:              ok = false; break;
